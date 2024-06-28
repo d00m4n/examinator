@@ -10,11 +10,25 @@ from flask import Flask, render_template_string, request, session, redirect, url
 from config import EXAMS_FOLDER
 from config import EXAM_QUESTIONS
 from config import QUESTIONS_PER_PAGE
+from config import THEME
+from config import TITLE
 
 app = Flask(__name__)
 app.secret_key = 'una_clau_secreta_molt_segura'
 
 ESTIL_PREGUNTA = 'h3'
+
+def load_cfg(filename):
+    '''
+    load config file
+    '''
+    with open(filename, 'r', encoding="utf-8") as f:
+        cfg = f.read()
+    return cfg
+header=load_cfg(f"./static/theme/{THEME}/header.cfg")
+# load theme
+HEADER=f"<head>{header}</head>".replace("@THEME",THEME)
+HEADER=HEADER.replace("@TITLE",TITLE)
 
 def get_syllabus(folder):
     '''
@@ -57,7 +71,7 @@ def processar_fitxer(tema, nom_fitxer):
     return preguntes_respostes[:EXAM_QUESTIONS]
 
 def generar_html_seleccio_tema(temes):
-    html = '<html><body>\n'
+    html = f'<html>{HEADER}<body>\n'
     html += '<h2>Selecciona un tema:</h2>\n'
     html += '<form method="post" action="/seleccionar_tema">\n'
     for tema in temes:
