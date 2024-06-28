@@ -2,6 +2,7 @@
 import random
 import re
 import os
+from typing import List
 
 # external imports
 from flask import Flask, render_template_string, request, session, redirect, url_for
@@ -32,16 +33,25 @@ HEADER=HEADER.replace("@TITLE",TITLE)
 
 def get_syllabus(folder):
     '''
-        scan folder for exam syllabus
+        scan folder for exam Course
     '''
     return [d for d in os.listdir(folder) if os.path.isdir(os.path.join(folder, d))]
 
-def obtenir_fitxers_examen(tema):
-    ruta_tema = os.path.join(EXAMS_FOLDER, tema)
-    return [f for f in os.listdir(ruta_tema) if f.endswith('.md')]
+def get_exam_files(Course: str) -> List[str]:
+    """Returns a list of exam files for a specific Course.
+    
+    Arguments:
+    Course -- The Course for which to get the exam files
+    
+    Returns:
+    A list of filenames ending with '.md'
+    """
+    exams_folder = EXAMS_FOLDER  # Define this variable according to your configuration
+    syllabus_path = os.path.join(exams_folder, Course)
+    return [f for f in os.listdir(syllabus_path) if f.endswith('.md')]
 
-def processar_fitxer(tema, nom_fitxer):
-    ruta_completa = os.path.join(EXAMS_FOLDER, tema, nom_fitxer)
+def processar_fitxer(Course, nom_fitxer):
+    ruta_completa = os.path.join(EXAMS_FOLDER, Course, nom_fitxer)
     with open(ruta_completa, 'r', encoding='utf-8') as fitxer:
         linies = fitxer.readlines()
 
@@ -72,23 +82,23 @@ def processar_fitxer(tema, nom_fitxer):
 
 def generar_html_seleccio_tema(temes):
     html = f'<html>{HEADER}<body>\n'
-    html += '<h2>Selecciona un tema:</h2>\n'
+    html += '<h2>Selecciona un Course:</h2>\n'
     html += '<form method="post" action="/seleccionar_tema">\n'
-    for tema in temes:
-        html += f'<input type="radio" name="tema" value="{tema}">{tema}<br>\n'
-    html += '<br><input type="submit" value="Seleccionar Tema">\n'
+    for Course in temes:
+        html += f'<input type="radio" name="Course" value="{Course}">{Course}<br>\n'
+    html += '<br><input type="submit" value="Seleccionar Course">\n'
     html += '</form>\n'
     html += '</body></html>'
     return html
 
-def generar_html_seleccio_examen(tema, fitxers):
+def generar_html_seleccio_examen(Course, fitxers):
     html = '<html><body>\n'
-    html += f'<h2>Tema: {tema}</h2>\n'
+    html += f'<h2>Course: {Course}</h2>\n'
     html += '<h3>Selecciona un examen:</h3>\n'
     html += '<form method="post" action="/seleccionar_examen">\n'
     for fitxer in fitxers:
         html += f'<input type="radio" name="examen" value="{fitxer}">{fitxer}<br>\n'
-    html += f'<input type="hidden" name="tema" value="{tema}">\n'
+    html += f'<input type="hidden" name="Course" value="{Course}">\n'
     html += '<br><input type="submit" value="Començar Examen">\n'
     html += '</form>\n'
     html += '</body></html>'
@@ -166,20 +176,20 @@ def index():
 
 @app.route('/seleccionar_tema', methods=['POST'])
 def seleccionar_tema():
-    tema_seleccionat = request.form.get('tema')
+    tema_seleccionat = request.form.get('Course')
     if tema_seleccionat:
-        fitxers = obtenir_fitxers_examen(tema_seleccionat)
+        fitxers = get_exam_files(tema_seleccionat)
         return render_template_string(generar_html_seleccio_examen(tema_seleccionat, fitxers))
     return redirect(url_for('index'))
 
 @app.route('/seleccionar_examen', methods=['POST'])
 def seleccionar_examen():
-    tema = request.form.get('tema')
+    Course = request.form.get('Course')
     examen_seleccionat = request.form.get('examen')
-    if tema and examen_seleccionat:
-        session['tema'] = tema
+    if Course and examen_seleccionat:
+        session['Course'] = Course
         session['examen_seleccionat'] = examen_seleccionat
-        preguntes_respostes = processar_fitxer(tema, examen_seleccionat)
+        preguntes_respostes = processar_fitxer(Course, examen_seleccionat)
         session['preguntes_respostes'] = preguntes_respostes
         session['respostes_usuari'] = {f'pregunta{i+1}': [] for i in range(len(preguntes_respostes))}
         return redirect(url_for('quiz'))
