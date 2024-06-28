@@ -16,7 +16,6 @@ app.secret_key = 'una_clau_secreta_molt_segura'
 
 ESTIL_PREGUNTA = 'h3'
 
-
 def get_syllabus(folder):
     '''
         scan folder for exam syllabus
@@ -24,11 +23,11 @@ def get_syllabus(folder):
     return [d for d in os.listdir(folder) if os.path.isdir(os.path.join(folder, d))]
 
 def obtenir_fitxers_examen(tema):
-    ruta_tema = os.path.join(CARPETA_EXAMS, tema)
+    ruta_tema = os.path.join(EXAMS_FOLDER, tema)
     return [f for f in os.listdir(ruta_tema) if f.endswith('.md')]
 
 def processar_fitxer(tema, nom_fitxer):
-    ruta_completa = os.path.join(CARPETA_EXAMS, tema, nom_fitxer)
+    ruta_completa = os.path.join(EXAMS_FOLDER, tema, nom_fitxer)
     with open(ruta_completa, 'r', encoding='utf-8') as fitxer:
         linies = fitxer.readlines()
 
@@ -63,7 +62,7 @@ def generar_html_seleccio_tema(temes):
     html += '<form method="post" action="/seleccionar_tema">\n'
     for tema in temes:
         html += f'<input type="radio" name="tema" value="{tema}">{tema}<br>\n'
-    html += '<input type="submit" value="Seleccionar Tema">\n'
+    html += '<br><input type="submit" value="Seleccionar Tema">\n'
     html += '</form>\n'
     html += '</body></html>'
     return html
@@ -76,32 +75,79 @@ def generar_html_seleccio_examen(tema, fitxers):
     for fitxer in fitxers:
         html += f'<input type="radio" name="examen" value="{fitxer}">{fitxer}<br>\n'
     html += f'<input type="hidden" name="tema" value="{tema}">\n'
-    html += '<input type="submit" value="Començar Examen">\n'
+    html += '<br><input type="submit" value="Començar Examen">\n'
     html += '</form>\n'
     html += '</body></html>'
     return html
 
-def generar_html(preguntes_respostes, estil_pregunta):
+def generar_html(preguntes_respostes, estil_pregunta, pagina_actual, total_preguntes, respostes_guardades):
     html = '<html><body>\n'
     html += '<form method="post">\n'
-    for i, pregunta in enumerate(preguntes_respostes, 1):
+    
+    offset = (pagina_actual - 1) * QUESTIONS_PER_PAGE
+    
+    for i, pregunta in enumerate(preguntes_respostes, offset + 1):
         html += f"<{estil_pregunta}>{i}. {pregunta['pregunta']}</{estil_pregunta}>\n"
+        clau = f'pregunta{i}'
+        respostes_usuari = respostes_guardades.get(clau, [])
+        
         if len(pregunta['correctes']) == 1 and len(pregunta['respostes']) == 1:
-            html += f'<input type="text" name="pregunta{i}" />\n'
+            valor = respostes_usuari[0] if respostes_usuari else ""
+            html += f'<input type="text" name="{clau}" value="{valor}" />\n'
         elif len(pregunta['correctes']) == 1:
             for resposta in pregunta['respostes']:
-                html += f'<input type="radio" name="pregunta{i}" value="{resposta}">{resposta}<br/>\n'
+                checked = 'checked' if resposta in respostes_usuari else ''
+                html += f'<input type="radio" name="{clau}" value="{resposta}" {checked}>{resposta}<br/>\n'
         else:
             for resposta in pregunta['respostes']:
-                html += f'<input type="checkbox" name="pregunta{i}" value="{resposta}">{resposta}<br/>\n'
-    html += '<input type="submit" name="action" value="Finalitzar Examen" />\n'
+                checked = 'checked' if resposta in respostes_usuari else ''
+                html += f'<input type="checkbox" name="{clau}" value="{resposta}" {checked}>{resposta}<br/>\n'
+    
+    # Afegim controls de paginació
+    total_pagines = (total_preguntes + QUESTIONS_PER_PAGE - 1) // QUESTIONS_PER_PAGE
+    html += f'<p>Pàgina {pagina_actual} de {total_pagines}</p>\n'
+    
+    if pagina_actual > 1:
+        html += f'<a href="{url_for("quiz", pagina=pagina_actual-1)}">Anterior</a> '
+    
+    if pagina_actual < total_pagines:
+        html += f'<a href="{url_for("quiz", pagina=pagina_actual+1)}">Següent</a> '
+    
+    html += '<br><br><input type="submit" name="action" value="Finalitzar Examen" />\n'
     html += '</form>\n'
     html += '</body></html>'
     return html
 
+def generar_html_resultats(puntuacio, total_preguntes, resultats_detallats):
+    percentatge = (puntuacio / total_preguntes) * 100
+    
+    html = f'<h1>La teva puntuació és: {puntuacio} de {total_preguntes} ({percentatge:.2f}%)</h1>'
+    html += '<h2>Respostes detallades:</h2>'
+    for i, resultat in enumerate(resultats_detallats, 1):
+        html += f"<{ESTIL_PREGUNTA}>{i}. {resultat['pregunta']}</{ESTIL_PREGUNTA}>"
+        
+        # Mostrem la resposta de l'usuari
+        if isinstance(resultat['resposta_usuari'], list):
+            resposta_usuari = ', '.join(resultat['resposta_usuari']) if resultat['resposta_usuari'] else "Cap resposta seleccionada"
+        else:
+            resposta_usuari = resultat['resposta_usuari'] if resultat['resposta_usuari'] else "Cap resposta introduïda"
+        html += f"<p>La teva resposta: {resposta_usuari}</p>"
+        
+        # Mostrem la resposta correcta
+        html += f"<p>Resposta correcta: {', '.join(resultat['respostes_correctes'])}</p>"
+        
+        # Indiquem si és correcta o incorrecta
+        html += f"<p>{'Correcta' if resultat['es_correcta'] else 'Incorrecta'}</p>"
+        html += "<hr>"
+    
+    html += '<form method="get" action="/">'
+    html += '<input type="submit" value="Nou Examen" />'
+    html += '</form>'
+    
+    return html
 @app.route('/')
 def index():
-    temes = get_syllabus(CARPETA_EXAMS)
+    temes = get_syllabus(EXAMS_FOLDER)
     return render_template_string(generar_html_seleccio_tema(temes))
 
 @app.route('/seleccionar_tema', methods=['POST'])
@@ -119,7 +165,9 @@ def seleccionar_examen():
     if tema and examen_seleccionat:
         session['tema'] = tema
         session['examen_seleccionat'] = examen_seleccionat
-        session['preguntes_respostes'] = processar_fitxer(tema, examen_seleccionat)
+        preguntes_respostes = processar_fitxer(tema, examen_seleccionat)
+        session['preguntes_respostes'] = preguntes_respostes
+        session['respostes_usuari'] = {f'pregunta{i+1}': [] for i in range(len(preguntes_respostes))}
         return redirect(url_for('quiz'))
     return redirect(url_for('index'))
 
@@ -129,57 +177,80 @@ def quiz():
         return redirect(url_for('index'))
     
     preguntes_respostes = session['preguntes_respostes']
+    total_preguntes = len(preguntes_respostes)
     
-    if request.method == 'POST' and request.form.get('action') == 'Finalitzar Examen':
-        respostes_usuari = request.form
-        puntuacio = 0
-        resultats_detallats = []
-        
-        for i, pregunta in enumerate(preguntes_respostes, 1):
+    # Inicialitzem les respostes de l'usuari si no existeixen
+    if 'respostes_usuari' not in session:
+        session['respostes_usuari'] = {f'pregunta{i+1}': [] for i in range(total_preguntes)}
+    
+    # Obtenim la pàgina actual
+    pagina_actual = request.args.get('pagina', 1, type=int)
+    
+    # Calculem l'índex d'inici i final per a la pàgina actual
+    inici = (pagina_actual - 1) * QUESTIONS_PER_PAGE
+    final = min(inici + QUESTIONS_PER_PAGE, total_preguntes)
+    
+    # Obtenim les preguntes per a la pàgina actual
+    preguntes_pagina = preguntes_respostes[inici:final]
+    
+    if request.method == 'POST':
+        # Guardem les respostes de la pàgina actual
+        respostes_usuari = session['respostes_usuari']
+        for i in range(inici + 1, final + 1):
             clau = f'pregunta{i}'
-            resposta_usuari = respostes_usuari.getlist(clau)
-            respostes_correctes = set(pregunta['correctes'])
-            es_correcta = False
+            if clau in request.form:
+                respostes_usuari[clau] = request.form.getlist(clau)
+            elif clau not in respostes_usuari:
+                respostes_usuari[clau] = []
+        
+        session['respostes_usuari'] = respostes_usuari
+        session.modified = True
+        
+        if request.form.get('action') == 'Finalitzar Examen':
+            # Processem totes les respostes
+            puntuacio = 0
+            resultats_detallats = []
             
-            if len(pregunta['correctes']) == 1 and len(pregunta['respostes']) == 1:
-                resposta_usuari = resposta_usuari[0] if resposta_usuari else ""
-                es_correcta = resposta_usuari.lower() == pregunta['correctes'][0].lower()
-            elif len(pregunta['correctes']) == 1:
-                resposta_usuari = resposta_usuari[0] if resposta_usuari else ""
-                es_correcta = resposta_usuari in respostes_correctes
-            else:
-                es_correcta = set(resposta_usuari) == respostes_correctes
+            for i, pregunta in enumerate(preguntes_respostes, 1):
+                clau = f'pregunta{i}'
+                resposta_usuari = respostes_usuari.get(clau, [])
+                respostes_correctes = set(pregunta['correctes'])
+                es_correcta = False
+                
+                if len(pregunta['correctes']) == 1 and len(pregunta['respostes']) == 1:
+                    resposta_usuari = resposta_usuari[0] if resposta_usuari else ""
+                    es_correcta = resposta_usuari.lower() == pregunta['correctes'][0].lower()
+                elif len(pregunta['correctes']) == 1:
+                    resposta_usuari = resposta_usuari[0] if resposta_usuari else ""
+                    es_correcta = resposta_usuari in respostes_correctes
+                else:
+                    es_correcta = set(resposta_usuari) == respostes_correctes
+                
+                if es_correcta:
+                    puntuacio += 1
+                
+                resultats_detallats.append({
+                    'pregunta': pregunta['pregunta'],
+                    'resposta_usuari': resposta_usuari,
+                    'respostes_correctes': pregunta['correctes'],
+                    'es_correcta': es_correcta
+                })
             
-            if es_correcta:
-                puntuacio += 1
+            # Netegem les respostes de la sessió
+            session.pop('respostes_usuari', None)
+            session.pop('preguntes_respostes', None)
             
-            resultats_detallats.append({
-                'pregunta': pregunta['pregunta'],
-                'resposta_usuari': resposta_usuari,
-                'respostes_correctes': pregunta['correctes'],
-                'es_correcta': es_correcta
-            })
-        
-        total_preguntes = len(preguntes_respostes)
-        percentatge = (puntuacio / total_preguntes) * 100
-        
-        html_resultats = f'<h1>La teva puntuació és: {puntuacio} de {total_preguntes} ({percentatge:.2f}%)</h1>'
-        html_resultats += '<h2>Respostes detallades:</h2>'
-        for i, resultat in enumerate(resultats_detallats, 1):
-            html_resultats += f"<{ESTIL_PREGUNTA}>{i}. {resultat['pregunta']}</{ESTIL_PREGUNTA}>"
-            html_resultats += f"<p>La teva resposta: {', '.join(resultat['resposta_usuari']) if isinstance(resultat['resposta_usuari'], list) else resultat['resposta_usuari']}</p>"
-            html_resultats += f"<p>Resposta correcta: {', '.join(resultat['respostes_correctes'])}</p>"
-            html_resultats += f"<p>{'Correcta' if resultat['es_correcta'] else 'Incorrecta'}</p>"
-            html_resultats += "<hr>"
-        
-        html_resultats += '<form method="get" action="/">'
-        html_resultats += '<input type="submit" value="Nou Examen" />'
-        html_resultats += '</form>'
-        
-        return html_resultats
-    else:
-        html = generar_html(preguntes_respostes, ESTIL_PREGUNTA)
-        return render_template_string(html)
+            # Generem i retornem els resultats
+            return generar_html_resultats(puntuacio, total_preguntes, resultats_detallats)
+        else:
+            # Si no s'ha finalitzat l'examen, redirigim a la següent pàgina
+            return redirect(url_for('quiz', pagina=pagina_actual+1))
+    
+    # Recuperem les respostes guardades per a aquesta pàgina
+    respostes_guardades = {k: v for k, v in session['respostes_usuari'].items() if int(k[8:]) > inici and int(k[8:]) <= final}
+    
+    html = generar_html(preguntes_pagina, ESTIL_PREGUNTA, pagina_actual, total_preguntes, respostes_guardades)
+    return render_template_string(html)
 
 if __name__ == '__main__':
     app.run(debug=True)

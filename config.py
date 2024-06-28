@@ -1,3 +1,3 @@
-EXAMS_FOLDER = "D:\\MEGA\\projectes\\python\\examinator2\\exams"
+EXAMS_FOLDER = "D:\\MEGA\\projectes\\python\\examinator\\exams"
 EXAM_QUESTIONS = 5
-QUESTIONS_PER_PAGE=1
+QUESTIONS_PER_PAGE = 5  # O el nombre que prefereixis
