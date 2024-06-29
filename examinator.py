@@ -31,8 +31,11 @@ from config import TITLE
 from appsecrets import PRIVATE_KEY_PATH
 from appsecrets import PRIVATE_KEY_PASSWORD
 import config
+from routes.index import index_bp
+
 
 app = Flask(__name__)
+app.register_blueprint(index_bp)
 app.secret_key = 'una_clau_secreta_molt_segura'
 QUESTION_STYLE = 'h3'
 
@@ -426,20 +429,20 @@ def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: 
 
 # ---------------------| Variables |------------------
 
-header = load_cfg(f"static/theme/{THEME}/header.cfg")
+header = load_cfg(f"static/theme/default/header.cfg")
 # load theme
 HEADER = f"<head>{header}</head>".replace("@THEME", THEME)
 HEADER = HEADER.replace("@TITLE", TITLE)
 BASE_HTML = f'<html>{HEADER}<body>\n'
 
 # --------------------------- Main app ------------------
-@app.route('/')
-def index():
-    """
-    Route for the index page.
-    """
-    topics = get_syllabus(EXAMS_FOLDER)
-    return render_template_string(generate_topic_selection_html(topics))
+# @app.route('/')
+# def index():
+#     """
+#     Route for the index page.
+#     """
+#     topics = get_syllabus(EXAMS_FOLDER)
+#     return render_template_string(generate_topic_selection_html(topics))
 
 @app.route('/select_topic', methods=['POST'])
 def select_topic():
@@ -499,10 +502,11 @@ def quiz():
                 else:
                     user_answers[question_number] = [value]
         
-        session['user_answers'] = user_answers
+        session['user_answers'] = to_string_keys(session['user_answers'])
         session.modified = True
         
         if request.form.get('action') == 'Finish Exam':
+            return redirect(url_for('review'))
             # Process all answers
             score = 0
             detailed_results = []
@@ -639,5 +643,83 @@ def pdfnotfound():
       
     return render_template_string(html), 400
 
+@app.route('/review', methods=['GET', 'POST'])
+def review():
+    if 'questions_answers' not in session:
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        # Actualitzem les respostes si l'usuari les ha modificat
+        for key, value in request.form.items():
+            if key.startswith('question'):
+                session['user_answers'][str(key)] = value if isinstance(value, list) else [value]
+    
+    questions_answers = session['questions_answers']
+    user_answers = {str(k): v for k, v in session.get('user_answers', {}).items()}
+    
+    return render_template('review.html', 
+                           questions=questions_answers, 
+                           user_answers=user_answers)
+
+@app.route('/submit')
+def submit():
+    if 'questions_answers' not in session or 'user_answers' not in session:
+        return redirect(url_for('index'))
+    
+    questions_answers = session['questions_answers']
+    user_answers = session['user_answers']
+    
+    score = 0
+    total_questions = len(questions_answers)
+    detailed_results = []
+    
+    for i, question in enumerate(questions_answers, 1):
+        user_answer = set(user_answers.get(f'question{i}', []))
+        correct_answers = set(question['correct'])
+        is_correct = user_answer == correct_answers
+        
+        if is_correct:
+            score += 1
+        
+        detailed_results.append({
+            'question': question['question'],
+            'user_answer': user_answer,
+            'correct_answers': correct_answers,
+            'is_correct': is_correct
+        })
+    
+    session['score'] = score
+    session['total_questions'] = total_questions
+    session['detailed_results'] = detailed_results
+    
+    return redirect(url_for('results'))
+
+@app.route('/results')
+def results():
+    if 'score' not in session or 'total_questions' not in session or 'detailed_results' not in session:
+        return redirect(url_for('index'))
+    
+    score = session['score']
+    total_questions = session['total_questions']
+    detailed_results = session['detailed_results']
+    
+    # Netegem la sessió
+    session.pop('questions_answers', None)
+    session.pop('user_answers', None)
+    session.pop('score', None)
+    session.pop('total_questions', None)
+    session.pop('detailed_results', None)
+    
+    return render_template('results.html', 
+                           score=score, 
+                           total_questions=total_questions, 
+                           detailed_results=detailed_results)
+def to_string_keys(d):
+    if isinstance(d, dict):
+        return {str(k): to_string_keys(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [to_string_keys(v) for v in d]
+    else:
+        return d    
 if __name__ == '__main__':
     app.run(debug=True,port=5005)
