@@ -300,59 +300,6 @@ def generate_exam_selection_html(course: str, files: List[str]) -> str:
     html += '</body></html>'
     return html
 
-def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: str, 
-                       current_page: int, total_questions: int, saved_answers: Dict[str, List[str]]) -> str:
-    """
-    Generate HTML for the quiz page.
-
-    Args:
-    questions_answers -- List of questions and answers
-    question_style -- HTML style for questions
-    current_page -- Current page number
-    total_questions -- Total number of questions
-    saved_answers -- Dictionary of saved user answers
-
-    Returns:
-    HTML string for the quiz page
-    """
-    html = BASE_HTML
-    html += '<form method="post">\n'
-    
-    offset = (current_page - 1) * QUESTIONS_PER_PAGE
-    
-    for i, question in enumerate(questions_answers, offset + 1):
-        html += f"<{question_style}>{i}. {question['question']}</{question_style}>\n"
-        key = f'question{i}'
-        user_answers = saved_answers.get(key, [])
-        
-        if len(question['correct']) == 1 and len(question['answers']) == 1:
-            value = user_answers[0] if user_answers else ""
-            html += f'<input type="text" name="{key}" value="{value}" />\n'
-        elif len(question['correct']) == 1:
-            for answer in question['answers']:
-                checked = 'checked' if answer in user_answers else ''
-                html += f'<input type="radio" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
-        else:
-            for answer in question['answers']:
-                checked = 'checked' if answer in user_answers else ''
-                html += f'<input type="checkbox" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
-    
-    # Add pagination controls
-    total_pages = (total_questions + QUESTIONS_PER_PAGE - 1) // QUESTIONS_PER_PAGE
-    html += f'<input type="hidden" name="current_page" value="{current_page}">'
-    html += f'<p>Page {current_page} of {total_pages}</p>\n'
-    
-    if current_page > 1:
-        html += f'<a href="{url_for("quiz", page=current_page-1)}">Previous</a> '
-    
-    if current_page < total_pages:
-        html += f'<a href="{url_for("quiz", page=current_page+1)}">Next</a> '
-    
-    html += '<br><br><input type="submit" name="action" value="Finish Exam" />\n'
-    html += '</form>\n'
-    html += '</body></html>'
-    return html
-
 def generate_results_html(score: int, total_questions: int, detailed_results: List[Dict[str, Any]]) -> str:
     """
     Generate HTML for the results page with colored answers and improved display logic.
@@ -411,6 +358,59 @@ def add_redirect(BASE_HTML, redirect_url, delay=5):
     
     # Inserim la metaetiqueta just abans de </head>
     return BASE_HTML[:head_end_index] + redirect_meta + BASE_HTML[head_end_index:]
+
+def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: str, 
+                       current_page: int, total_questions: int, saved_answers: Dict[str, List[str]]) -> str:
+    """
+    Generate HTML for the quiz page.
+
+    Args:
+    questions_answers -- List of questions and answers
+    question_style -- HTML style for questions
+    current_page -- Current page number
+    total_questions -- Total number of questions
+    saved_answers -- Dictionary of saved user answers
+
+    Returns:
+    HTML string for the quiz page
+    """
+    html = BASE_HTML
+    html += '<form method="post">\n'
+    
+    offset = (current_page - 1) * QUESTIONS_PER_PAGE
+    
+    for i, question in enumerate(questions_answers, offset + 1):
+        html += f"<{question_style}>{i}. {question['question']}</{question_style}>\n"
+        key = f'question{i}'
+        user_answers = saved_answers.get(key, [])
+        
+        if len(question['correct']) == 1 and len(question['answers']) == 1:
+            value = user_answers[0] if user_answers else ""
+            html += f'<input type="text" name="{key}" value="{value}" />\n'
+        elif len(question['correct']) == 1:
+            for answer in question['answers']:
+                checked = 'checked' if answer in user_answers else ''
+                html += f'<input type="radio" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
+        else:
+            for answer in question['answers']:
+                checked = 'checked' if answer in user_answers else ''
+                html += f'<input type="checkbox" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
+    
+    # Add pagination controls
+    total_pages = (total_questions + QUESTIONS_PER_PAGE - 1) // QUESTIONS_PER_PAGE
+    html += f'<input type="hidden" name="current_page" value="{current_page}">'
+    html += f'<p>Page {current_page} of {total_pages}</p>\n'
+    
+    if current_page > 1:
+        html += f'<a href="{url_for("quiz", page=current_page-1)}">Previous</a> '
+    
+    if current_page < total_pages:
+        html += f'<a href="{url_for("quiz", page=current_page+1)}">Next</a> '
+    
+    html += '<br><br><input type="submit" name="action" value="Finish Exam" />\n'
+    html += '</form>\n'
+    html += '</body></html>'
+    return html
 
 # ---------------------| Variables |------------------
 
@@ -475,11 +475,18 @@ def quiz():
     if 'user_answers' not in session:
         session['user_answers'] = {}
     
+    user_answers = session['user_answers']
+    
     if request.method == 'POST':
         for key, value in request.form.items():
             if key.startswith('question'):
-                session['user_answers'][key] = value
+                question_number = int(key[8:])  # Extract the question number from the key
+                if isinstance(value, list):
+                    user_answers[question_number] = value
+                else:
+                    user_answers[question_number] = [value]
         
+        session['user_answers'] = user_answers
         session.modified = True
         
         if request.form.get('action') == 'Finish Exam':
@@ -488,8 +495,7 @@ def quiz():
             detailed_results = []
             
             for i, question in enumerate(questions_answers, 1):
-                key = f'question{i}'
-                user_answer = user_answers.get(key, [])
+                user_answer = user_answers.get(i, [])
                 correct_answers = set(question['correct'])
                 is_correct = False
                 
@@ -533,7 +539,7 @@ def quiz():
     end = min(start + QUESTIONS_PER_PAGE, total_questions)
     page_questions = questions_answers[start:end]
     
-    saved_answers = session['user_answers']
+    saved_answers = {i: user_answers.get(i, []) for i in range(start + 1, end + 1)}
     
     html = generate_quiz_html(page_questions, QUESTION_STYLE, current_page, total_questions, saved_answers)
     return render_template_string(html)
