@@ -3,16 +3,17 @@ import random
 import re
 import os
 from typing import List, Dict, Any
+from time import sleep
+from io import BytesIO
+from datetime import datetime
+import io
 
 # external imports
-from flask import Flask, render_template_string, request, session, redirect, url_for
+from flask import Flask, render_template_string, request, session, redirect, url_for,flash
 from flask import send_file
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
-from io import BytesIO
-from datetime import datetime
-import io
 from PyPDF2 import PdfReader, PdfWriter
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -24,8 +25,8 @@ from config import EXAM_QUESTIONS
 from config import QUESTIONS_PER_PAGE
 from config import THEME
 from config import TITLE
-from secrets import PRIVATE_KEY_PATH
-from secrets import PRIVATE_KEY_PASSWORD
+# from secrets import PRIVATE_KEY_PATH
+# from secrets import PRIVATE_KEY_PASSWORD
 
 app = Flask(__name__)
 app.secret_key = 'una_clau_secreta_molt_segura'
@@ -227,7 +228,6 @@ def remove_duplicates(questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     
     return unique_questions
 
-
 def generate_topic_selection_html(topics: List[str]) -> str:
     """
     Generate HTML for topic selection page.
@@ -370,10 +370,21 @@ def generate_results_html(score: int, total_questions: int, detailed_results: Li
     
     return html
 
+def add_redirect(BASE_HTML, redirect_url, delay=5):
+    # Creem la metaetiqueta de redirecció
+    redirect_meta = f'<meta http-equiv="refresh" content="{delay}; URL=\'{redirect_url}\'" />'
+    
+    # Afegim la metaetiqueta al <head> de BASE_HTML
+    head_end_index = BASE_HTML.find('</head>')
+    if head_end_index == -1:
+        return BASE_HTML  # Si no hi ha </head>, retornem BASE_HTML sense canvis
+    
+    # Inserim la metaetiqueta just abans de </head>
+    return BASE_HTML[:head_end_index] + redirect_meta + BASE_HTML[head_end_index:]
 
 # ---------------------| Variables |------------------
 
-header = load_cfg(f"./static/theme/{THEME}/header.cfg")
+header = load_cfg(f"static/theme/{THEME}/header.cfg")
 # load theme
 HEADER = f"<head>{header}</head>".replace("@THEME", THEME)
 HEADER = HEADER.replace("@TITLE", TITLE)
@@ -517,9 +528,11 @@ def download_results():
     total_questions = session.get('total_questions')
     detailed_results = session.get('detailed_results')
 
+    # if not all([score, total_questions, detailed_results]):
+    #     return "No exam results available", 400
     if not all([score, total_questions, detailed_results]):
-        return "No exam results available", 400
 
+        return redirect(url_for('pdfnotfound'))  # Redirigeix a la pàgina que tu vulguis
     pdf_buffer = generate_pdf(score, total_questions, detailed_results)
     
     # Signem el PDF
@@ -531,5 +544,13 @@ def download_results():
         download_name=f"signed_exam_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
         mimetype='application/pdf'
     )
+
+@app.route('/pdfnotfound')
+def pdfnotfound():
+    html=add_redirect(BASE_HTML, '/', 2)
+    html+="No exam results available"
+      
+    return render_template_string(html), 400
+
 if __name__ == '__main__':
     app.run(debug=True)
