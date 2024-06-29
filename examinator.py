@@ -37,26 +37,30 @@ app.secret_key = 'una_clau_secreta_molt_segura'
 QUESTION_STYLE = 'h3'
 
 def load_private_key():
-    # if not os.path.exists(PRIVATE_KEY_PATH):
-    #     raise FileNotFoundError(f"Private key file not found: {PRIVATE_KEY_PATH}")
+    if not os.path.exists(PRIVATE_KEY_PATH):
+        return None
     try:
         with open(PRIVATE_KEY_PATH, 'rb') as key_file:
-            try:
-                private_key = load_pem_private_key(
-                    key_file.read(),
-                    password=PRIVATE_KEY_PASSWORD if PRIVATE_KEY_PASSWORD else None,
-                    backend=default_backend()
-                )
-                return private_key
-            except ValueError:
-                raise ValueError("Incorrect password for private key")
-    except (TypeError, ValueError) as e:
-        raise ValueError(f"Invalid private key or password: {str(e)}")
+            private_key = load_pem_private_key(
+                key_file.read(),
+                password=PRIVATE_KEY_PASSWORD if PRIVATE_KEY_PASSWORD else None,
+                backend=default_backend()
+            )
+            return private_key
+    except Exception as e:
+        print(f"Error loading private key: {str(e)}")
+        return None
 
 def sign_pdf(pdf_content):
     private_key = load_private_key()
-    
-    # Llegim el PDF
+    if private_key is None:
+        return pdf_content  # Return unsigned PDF if no valid key is found
+
+    # Assegurem-nos que pdf_content és bytes
+    if isinstance(pdf_content, io.BytesIO):
+        pdf_content = pdf_content.getvalue()
+
+    # Rest of the signing process...
     reader = PdfReader(io.BytesIO(pdf_content))
     writer = PdfWriter()
 
@@ -88,7 +92,7 @@ def sign_pdf(pdf_content):
     output = io.BytesIO()
     writer.write(output)
     output.seek(0)
-    return output
+    return output.getvalue()  # Return bytes instead of BytesIO
 
 def generate_pdf(score: int, total_questions: int, detailed_results: List[Dict[str, Any]]) -> BytesIO:
     buffer = BytesIO()
@@ -180,16 +184,6 @@ def process_files(course: str, file_names: List[str]) -> List[Dict[str, Any]]:
     return unique_questions
 
 def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
-    """
-    Process a single exam file and return a list of questions and answers.
-
-    Args:
-    course -- The course name
-    file_name -- The name of the file to process
-
-    Returns:
-    A list of dictionaries containing questions, answers, and correct answers
-    """
     full_path = os.path.join(EXAMS_FOLDER, course, file_name)
     with open(full_path, 'r', encoding='utf-8') as file:
         lines = file.readlines()
@@ -202,15 +196,15 @@ def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
         line = re.sub(r'`(.*?)`', r'<code>\1</code>', line)
         if line.startswith('####'):
             if current_question['question']:
-                # Barreja les respostes aleatòriament
-                answers = current_question['answers']
-                correct_answers = current_question['correct']
-                zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
-                random.shuffle(zipped_answers)
-                current_question['answers'], is_correct = zip(*zipped_answers)
-                current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
-                
-                questions_answers.append(current_question)
+                # Només barregem i afegim la pregunta si té respostes
+                if current_question['answers']:
+                    answers = current_question['answers']
+                    correct_answers = current_question['correct']
+                    zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
+                    random.shuffle(zipped_answers)
+                    current_question['answers'], is_correct = zip(*zipped_answers)
+                    current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
+                    questions_answers.append(current_question)
                 current_question = {'question': '', 'answers': [], 'correct': []}
             current_question['question'] += line[4:] + ' '
         elif line.startswith('+'):
@@ -221,15 +215,14 @@ def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
             if is_correct:
                 current_question['correct'].append(answer)
 
-    if current_question['question']:
-        # Barreja les respostes aleatòriament per a l'última pregunta
+    # Processar l'última pregunta
+    if current_question['question'] and current_question['answers']:
         answers = current_question['answers']
         correct_answers = current_question['correct']
         zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
         random.shuffle(zipped_answers)
         current_question['answers'], is_correct = zip(*zipped_answers)
         current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
-        
         questions_answers.append(current_question)
     
     return questions_answers
@@ -375,6 +368,65 @@ def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: 
     HTML string for the quiz page
     """
     html = BASE_HTML
+        # Afegim l'estil CSS per al div flotant
+    html += '''
+    <style>
+    #confirmOverlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        z-index: 1000;
+    }
+    #confirmBox {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: white;
+        padding: 20px;
+        border-radius: 5px;
+        text-align: center;
+        box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+    #confirmBox button {
+        margin: 10px;
+        padding: 5px 10px;
+        cursor: pointer;
+    }
+    </style>
+    '''
+    
+    # Afegim el div flotant al HTML
+    html += '''
+    <div id="confirmOverlay">
+        <div id="confirmBox">
+            <p>Estàs segur que vols finalitzar l'examen?</p>
+            <button onclick="submitExam()">Sí</button>
+            <button onclick="hideConfirm()">No</button>
+        </div>
+    </div>
+    '''
+    
+    # Afegim el JavaScript
+    html += '''
+    <script>
+    function showConfirm() {
+        document.getElementById('confirmOverlay').style.display = 'block';
+    }
+    function hideConfirm() {
+        document.getElementById('confirmOverlay').style.display = 'none';
+    }
+    function submitExam() {
+        document.getElementById('quizForm').submit();
+    }
+    </script>
+    '''
+    
+    html += '<form id="quizForm" method="post">\n'
     html += '<form method="post">\n'
     
     offset = (current_page - 1) * QUESTIONS_PER_PAGE
@@ -407,7 +459,8 @@ def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: 
     if current_page < total_pages:
         html += f'<a href="{url_for("quiz", page=current_page+1)}">Next</a> '
     
-    html += '<br><br><input type="submit" name="action" value="Finish Exam" />\n'
+    html += '<br><br><input type="button" onclick="showConfirm()" value="Finish Exam" />\n'
+    html += '<input type="hidden" name="action" value="Finish Exam" />\n'
     html += '</form>\n'
     html += '</body></html>'
     return html
@@ -443,27 +496,28 @@ def select_topic():
 # Modify the select_exam route to use the new process_files function
 @app.route('/select_exam', methods=['POST'])
 def select_exam():
-    """
-    Route for exam selection.
-    """
     course = request.form.get('course')
-    selected_exams = request.form.getlist('exam')  # This will get multiple selected exams
+    selected_exams = request.form.getlist('exam')
     if course and selected_exams:
         session['course'] = course
         session['selected_exams'] = selected_exams
         questions_answers = process_files(course, selected_exams)
         
-        # Shuffle the questions if needed
+        # Comprova si hi ha preguntes vàlides
+        if not questions_answers:
+            flash("No s'han trobat preguntes vàlides en els exàmens seleccionats.", "error")
+            return redirect(url_for('index'))
+        
+        # Barreja les preguntes si és necessari
         random.shuffle(questions_answers)
         
-        # Limit to EXAM_QUESTIONS if needed
+        # Limita a EXAM_QUESTIONS si és necessari
         questions_answers = questions_answers[:EXAM_QUESTIONS]
         
         session['questions_answers'] = questions_answers
         session['user_answers'] = {f'question{i+1}': [] for i in range(len(questions_answers))}
         return redirect(url_for('quiz'))
     return redirect(url_for('index'))
-
 @app.route('/quiz', methods=['GET', 'POST'])
 def quiz():
     if 'questions_answers' not in session:
@@ -556,26 +610,29 @@ def download_results():
     total_questions = session.get('total_questions')
     detailed_results = session.get('detailed_results')
 
-    # if not all([score, total_questions, detailed_results]):
-    #     return "No exam results available", 400
     if not all([score, total_questions, detailed_results]):
-        return redirect(url_for('pdfnotfound'))  # Redirigeix a la pàgina que tu vulguis
-    
+        return redirect(url_for('pdfnotfound'))
+
     try:
         pdf_buffer = generate_pdf(score, total_questions, detailed_results)
-        signed_pdf = sign_pdf(pdf_buffer.getvalue())
+        pdf_content = pdf_buffer.getvalue()
+        
+        # Try to sign, but use unsigned if no valid certificate
+        signed_pdf = sign_pdf(pdf_content)
+        
+        filename = "exam_results_{}.pdf".format(datetime.now().strftime('%Y%m%d_%H%M%S'))
+        if signed_pdf == pdf_content:
+            filename = "unsigned_" + filename
         
         return send_file(
-            signed_pdf,
+            io.BytesIO(signed_pdf),
             as_attachment=True,
-            download_name=f"signed_exam_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            download_name=filename,
             mimetype='application/pdf'
         )
-    except ValueError as e:
-        if str(e) == "Incorrect password for private key":
-            return redirect(url_for('certificate_error'))
-        else:
-            raise e
+    except Exception as e:
+        print(f"Error generating or signing PDF: {str(e)}")
+        return redirect(url_for('pdfnotfound'))
         
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -624,4 +681,4 @@ def pdfnotfound():
     return render_template_string(html), 400
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True,port=5005)
