@@ -24,7 +24,8 @@ from config import EXAM_QUESTIONS
 from config import QUESTIONS_PER_PAGE
 from config import THEME
 from config import TITLE
-
+from secrets import PRIVATE_KEY_PATH
+from secrets import PRIVATE_KEY_PASSWORD
 app = Flask(__name__)
 app.secret_key = 'una_clau_secreta_molt_segura'
 
@@ -331,9 +332,7 @@ header = load_cfg(f"./static/theme/{THEME}/header.cfg")
 HEADER = f"<head>{header}</head>".replace("@THEME", THEME)
 HEADER = HEADER.replace("@TITLE", TITLE)
 BASE_HTML = f'<html>{HEADER}<body>\n'
-# Assumim que tens una clau privada en format PEM
-PRIVATE_KEY_PATH = 'path/to/your/private_key.pem'
-PRIVATE_KEY_PASSWORD = b'your_password_if_any'  # Deixa-ho com a None si no hi ha contrasenya
+
 # --------------------------- Main app ------------------
 @app.route('/')
 def index():
