@@ -1,6 +1,6 @@
 # d00m4n's ignores
 secrets.py
-certs/*
+# certs/*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
