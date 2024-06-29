@@ -25,8 +25,8 @@ from config import EXAM_QUESTIONS
 from config import QUESTIONS_PER_PAGE
 from config import THEME
 from config import TITLE
-# from secrets import PRIVATE_KEY_PATH
-# from secrets import PRIVATE_KEY_PASSWORD
+from appsecrets import PRIVATE_KEY_PATH
+from appsecrets import PRIVATE_KEY_PASSWORD
 
 app = Flask(__name__)
 app.secret_key = 'una_clau_secreta_molt_segura'
@@ -189,6 +189,14 @@ def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
         line = re.sub(r'`(.*?)`', r'<code>\1</code>', line)
         if line.startswith('####'):
             if current_question['question']:
+                # Barreja les respostes aleatòriament
+                answers = current_question['answers']
+                correct_answers = current_question['correct']
+                zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
+                random.shuffle(zipped_answers)
+                current_question['answers'], is_correct = zip(*zipped_answers)
+                current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
+                
                 questions_answers.append(current_question)
                 current_question = {'question': '', 'answers': [], 'correct': []}
             current_question['question'] += line[4:] + ' '
@@ -201,6 +209,14 @@ def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
                 current_question['correct'].append(answer)
 
     if current_question['question']:
+        # Barreja les respostes aleatòriament per a l'última pregunta
+        answers = current_question['answers']
+        correct_answers = current_question['correct']
+        zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
+        random.shuffle(zipped_answers)
+        current_question['answers'], is_correct = zip(*zipped_answers)
+        current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
+        
         questions_answers.append(current_question)
     
     return questions_answers
