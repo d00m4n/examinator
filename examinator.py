@@ -7,10 +7,12 @@ from time import sleep
 from io import BytesIO
 from datetime import datetime
 import io
+import importlib
+import ast
 
 # external imports
 from flask import Flask, render_template_string, request, session, redirect, url_for,flash
-from flask import send_file
+from flask import send_file,render_template
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -18,6 +20,7 @@ from PyPDF2 import PdfReader, PdfWriter
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.backends import default_backend
 
 # custom imports
 from config import EXAMS_FOLDER
@@ -27,18 +30,28 @@ from config import THEME
 from config import TITLE
 from appsecrets import PRIVATE_KEY_PATH
 from appsecrets import PRIVATE_KEY_PASSWORD
+import config
 
 app = Flask(__name__)
 app.secret_key = 'una_clau_secreta_molt_segura'
 QUESTION_STYLE = 'h3'
 
 def load_private_key():
-    with open(PRIVATE_KEY_PATH, 'rb') as key_file:
-        private_key = load_pem_private_key(
-            key_file.read(),
-            password=PRIVATE_KEY_PASSWORD
-        )
-    return private_key
+    # if not os.path.exists(PRIVATE_KEY_PATH):
+    #     raise FileNotFoundError(f"Private key file not found: {PRIVATE_KEY_PATH}")
+    try:
+        with open(PRIVATE_KEY_PATH, 'rb') as key_file:
+            try:
+                private_key = load_pem_private_key(
+                    key_file.read(),
+                    password=PRIVATE_KEY_PASSWORD if PRIVATE_KEY_PASSWORD else None,
+                    backend=default_backend()
+                )
+                return private_key
+            except ValueError:
+                raise ValueError("Incorrect password for private key")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid private key or password: {str(e)}")
 
 def sign_pdf(pdf_content):
     private_key = load_private_key()
@@ -326,6 +339,7 @@ def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: 
     
     # Add pagination controls
     total_pages = (total_questions + QUESTIONS_PER_PAGE - 1) // QUESTIONS_PER_PAGE
+    html += f'<input type="hidden" name="current_page" value="{current_page}">'
     html += f'<p>Page {current_page} of {total_pages}</p>\n'
     
     if current_page > 1:
@@ -449,42 +463,23 @@ def select_exam():
         session['user_answers'] = {f'question{i+1}': [] for i in range(len(questions_answers))}
         return redirect(url_for('quiz'))
     return redirect(url_for('index'))
+
 @app.route('/quiz', methods=['GET', 'POST'])
 def quiz():
-    """
-    Route for the quiz page.
-    """
     if 'questions_answers' not in session:
         return redirect(url_for('index'))
     
     questions_answers = session['questions_answers']
     total_questions = len(questions_answers)
     
-    # Initialize user answers if they don't exist
     if 'user_answers' not in session:
-        session['user_answers'] = {f'question{i+1}': [] for i in range(total_questions)}
-    
-    # Get current page
-    current_page = request.args.get('page', 1, type=int)
-    
-    # Calculate start and end index for current page
-    start = (current_page - 1) * QUESTIONS_PER_PAGE
-    end = min(start + QUESTIONS_PER_PAGE, total_questions)
-    
-    # Get questions for current page
-    page_questions = questions_answers[start:end]
+        session['user_answers'] = {}
     
     if request.method == 'POST':
-        # Save answers for current page
-        user_answers = session['user_answers']
-        for i in range(start + 1, end + 1):
-            key = f'question{i}'
-            if key in request.form:
-                user_answers[key] = request.form.getlist(key)
-            elif key not in user_answers:
-                user_answers[key] = []
+        for key, value in request.form.items():
+            if key.startswith('question'):
+                session['user_answers'][key] = value
         
-        session['user_answers'] = user_answers
         session.modified = True
         
         if request.form.get('action') == 'Finish Exam':
@@ -529,13 +524,24 @@ def quiz():
             # Generate and return results
             return generate_results_html(score, total_questions, detailed_results)
         else:
-            # If exam not finished, redirect to next page
+            # Redirect to the next page
+            current_page = int(request.form.get('current_page', 1))
             return redirect(url_for('quiz', page=current_page+1))
     
-    # Retrieve saved answers for this page
-    saved_answers = {k: v for k, v in session['user_answers'].items() if int(k[8:]) > start and int(k[8:]) <= end}
+    current_page = request.args.get('page', 1, type=int)
+    start = (current_page - 1) * QUESTIONS_PER_PAGE
+    end = min(start + QUESTIONS_PER_PAGE, total_questions)
+    page_questions = questions_answers[start:end]
+    
+    saved_answers = session['user_answers']
     
     html = generate_quiz_html(page_questions, QUESTION_STYLE, current_page, total_questions, saved_answers)
+    return render_template_string(html)
+
+@app.route('/certificate_error')
+def certificate_error():
+    html=BASE_HTML
+    html+="<p>La contrasenya proporcionada per al certificat és incorrecta.</p>"
     return render_template_string(html)
 
 @app.route('/download_results')
@@ -547,19 +553,62 @@ def download_results():
     # if not all([score, total_questions, detailed_results]):
     #     return "No exam results available", 400
     if not all([score, total_questions, detailed_results]):
-
         return redirect(url_for('pdfnotfound'))  # Redirigeix a la pàgina que tu vulguis
-    pdf_buffer = generate_pdf(score, total_questions, detailed_results)
     
-    # Signem el PDF
-    signed_pdf = sign_pdf(pdf_buffer.getvalue())
+    try:
+        pdf_buffer = generate_pdf(score, total_questions, detailed_results)
+        signed_pdf = sign_pdf(pdf_buffer.getvalue())
+        
+        return send_file(
+            signed_pdf,
+            as_attachment=True,
+            download_name=f"signed_exam_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            mimetype='application/pdf'
+        )
+    except ValueError as e:
+        if str(e) == "Incorrect password for private key":
+            return redirect(url_for('certificate_error'))
+        else:
+            raise e
+        
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    if request.method == 'POST':
+        # Llegeix el contingut del fitxer config.py
+        with open('config.py', 'r') as f:
+            config_content = f.read()
+        
+        # Analitza el contingut com un arbre de sintaxi abstracta (AST)
+        config_ast = ast.parse(config_content)
+        
+        # Recorre l'AST i actualitza els valors de les variables
+        for node in ast.walk(config_ast):
+            if isinstance(node, ast.Assign):
+                target = node.targets[0]
+                if isinstance(target, ast.Name) and target.id in request.form:
+                    value = request.form[target.id]
+                    if isinstance(node.value, ast.Num):
+                        node.value.n = int(value)
+                    elif isinstance(node.value, ast.Str):
+                        node.value.s = value
+        
+        # Genera el codi font modificat a partir de l'AST
+        modified_config = ast.unparse(config_ast)
+        
+        # Escriu el codi font modificat al fitxer config.py
+        with open('config.py', 'w') as f:
+            f.write(modified_config)
+        
+        # Recarrega el mòdul config
+        importlib.reload(config)
+        
+        return redirect(url_for('admin'))
 
-    return send_file(
-        signed_pdf,
-        as_attachment=True,
-        download_name=f"signed_exam_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-        mimetype='application/pdf'
-    )
+    # Obté totes les variables de configuració
+    config_vars = {key: value for key, value in config.__dict__.items() if not key.startswith('__')}
+    
+    return render_template('admin.html', config_vars=config_vars)
+
 
 @app.route('/pdfnotfound')
 def pdfnotfound():
