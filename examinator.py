@@ -26,10 +26,56 @@ from config import THEME
 from config import TITLE
 from secrets import PRIVATE_KEY_PATH
 from secrets import PRIVATE_KEY_PASSWORD
+
 app = Flask(__name__)
 app.secret_key = 'una_clau_secreta_molt_segura'
-
 QUESTION_STYLE = 'h3'
+
+def load_private_key():
+    with open(PRIVATE_KEY_PATH, 'rb') as key_file:
+        private_key = load_pem_private_key(
+            key_file.read(),
+            password=PRIVATE_KEY_PASSWORD
+        )
+    return private_key
+
+def sign_pdf(pdf_content):
+    private_key = load_private_key()
+    
+    # Llegim el PDF
+    reader = PdfReader(io.BytesIO(pdf_content))
+    writer = PdfWriter()
+
+    # Copiem totes les pàgines al nou writer
+    for page in reader.pages:
+        writer.add_page(page)
+
+    # Creem la signatura
+    hash_object = hashes.Hash(hashes.SHA256())
+    hash_object.update(pdf_content)
+    digest = hash_object.finalize()
+
+    signature = private_key.sign(
+        digest,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+
+    # Afegim la signatura al PDF
+    writer.add_metadata({
+        '/Signature': signature.hex(),
+        '/SignatureMethod': 'RSA-SHA256'
+    })
+
+    # Escrivim el PDF signat
+    output = io.BytesIO()
+    writer.write(output)
+    output.seek(0)
+    return output
+
 def generate_pdf(score: int, total_questions: int, detailed_results: List[Dict[str, Any]]) -> BytesIO:
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -475,10 +521,14 @@ def download_results():
         return "No exam results available", 400
 
     pdf_buffer = generate_pdf(score, total_questions, detailed_results)
+    
+    # Signem el PDF
+    signed_pdf = sign_pdf(pdf_buffer.getvalue())
+
     return send_file(
-        pdf_buffer,
+        signed_pdf,
         as_attachment=True,
-        download_name=f"exam_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        download_name=f"signed_exam_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
         mimetype='application/pdf'
     )
 if __name__ == '__main__':
