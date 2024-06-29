@@ -369,37 +369,9 @@ def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: 
     """
     html = BASE_HTML
         # Afegim l'estil CSS per al div flotant
-    html += '''
-    <style>
-    #confirmOverlay {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.5);
-        z-index: 1000;
-    }
-    #confirmBox {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background-color: white;
-        padding: 20px;
-        border-radius: 5px;
-        text-align: center;
-        box-shadow: 0 0 10px rgba(0,0,0,0.3);
-    }
-    #confirmBox button {
-        margin: 10px;
-        padding: 5px 10px;
-        cursor: pointer;
-    }
-    </style>
-    '''
-    
+    # Afegim la referència al fitxer CSS
+    html += f'<link rel="stylesheet" type="text/css" href="/static/theme/{THEME}/css/confirm.css">'
+        
     # Afegim el div flotant al HTML
     html += '''
     <div id="confirmOverlay">
@@ -411,21 +383,8 @@ def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: 
     </div>
     '''
     
-    # Afegim el JavaScript
-    html += '''
-    <script>
-    function showConfirm() {
-        document.getElementById('confirmOverlay').style.display = 'block';
-    }
-    function hideConfirm() {
-        document.getElementById('confirmOverlay').style.display = 'none';
-    }
-    function submitExam() {
-        document.getElementById('quizForm').submit();
-    }
-    </script>
-    '''
-    
+    # Afegim la referència al fitxer JavaScript
+    html += f'<script src="/static/theme/{THEME}/js/confirm.js"></script>'    
     html += '<form id="quizForm" method="post">\n'
     html += '<form method="post">\n'
     
