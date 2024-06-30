@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Pàgina principal - Sistema d'Exàmens Online{% endblock %}
+
+{% block content %}
+<section id="course-selection">
+    <h2>Selecciona un curs per començar l'examen:</h2>
+    {% if courses %}
+        <form action="{{ url_for('select_topic') }}" method="post">
+            {% for course in courses %}
+                <div class="course-option">
+                    <input type="radio" id="{{ course }}" name="course" value="{{ course }}" required>
+                    <label for="{{ course }}">{{ course }}</label>
+                </div>
+            {% endfor %}
+            <button type="submit">Començar Examen</button>
+        </form>
+    {% else %}
+        <p>No hi ha cursos disponibles en aquest moment. Si us plau, torna-ho a provar més tard.</p>
+    {% endif %}
+</section>
+
+<section id="instructions">
+    <h2>Instruccions</h2>
+    <ol>
+        <li>Selecciona el curs del qual vols fer l'examen.</li>
+        <li>Llegeix atentament cada pregunta abans de respondre.</li>
+        <li>Assegura't de respondre totes les preguntes abans de finalitzar l'examen.</li>
+        <li>Un cop hagis acabat, revisa les teves respostes abans d'entregar.</li>
+        <li>Pots modificar les teves respostes fins que entreguis l'examen.</li>
+    </ol>
+</section>
+{% endblock %}

@@ -1,0 +1,56 @@
+/* Estils existents... */
+
+.question {
+    margin-bottom: 20px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.question h3 {
+    margin-top: 0;
+}
+
+button {
+    padding: 10px 20px;
+    margin-top: 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+.course-option {
+    margin-bottom: 10px;
+}
+
+.course-option input[type="radio"] {
+    margin-right: 10px;
+}
+
+.course-option label {
+    cursor: pointer;
+}
+
+.course-option:hover {
+    background-color: #f0f0f0;
+}
+
+button[type="submit"] {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button[type="submit"]:hover {
+    background-color: #45a049;
+}

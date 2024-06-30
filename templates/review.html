@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <title>Revisió de l'examen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/quiz.css') }}">
+    <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+</head>
+<body>
+    <h1>Revisió de l'examen</h1>
+    <form id="reviewForm" method="post" action="{{ url_for('review') }}">
+        {% for i, question in enumerate(questions, 1) %}
+            <div class="question">
+                <h3>{{ i }}. {{ question['question'] }}</h3>
+                {% for answer in question['answers'] %}
+                    <label>
+                        <input type="{% if question['correct']|length > 1 %}checkbox{% else %}radio{% endif %}"
+                               name="question{{ i }}"
+                               value="{{ answer }}"
+                               {% if answer in user_answers.get('question' ~ i, []) %}checked{% endif %}>
+                        {{ answer }}
+                    </label><br>
+                {% endfor %}
+            </div>
+        {% endfor %}
+        <button type="submit" name="action" value="update">Actualitzar respostes</button>
+    </form>
+    <button onclick="submitExam()">Entregar examen</button>
+
+    <script>
+        function submitExam() {
+            if (confirm("Estàs segur que vols entregar l'examen? Ja no podràs modificar les respostes.")) {
+                window.location.href = "{{ url_for('submit') }}";
+            }
+        }
+    </script>
+</body>
+</html>

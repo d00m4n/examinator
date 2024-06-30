@@ -137,10 +137,17 @@ def load_cfg(filename: str) -> str:
     '''
     Load config file
     '''
-    with open(filename, 'r', encoding="utf-8") as f:
-        cfg = f.read()
-    return cfg
-
+    if not os.path.exists(filename):
+        exit(f"Error: El archivo de configuración '{filename}' no existe.")
+    
+    try:
+        with open(filename, 'r', encoding="utf-8") as f:
+            cfg = f.read()
+        return cfg
+    except IOError as e:
+        print(f"Error al leer el archivo '{filename}': {e}")
+        return ""
+    
 def get_syllabus(folder: str) -> List[str]:
     '''
     Scan folder for exam course
@@ -387,7 +394,7 @@ def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: 
     '''
     
     # Afegim la referència al fitxer JavaScript
-    html += f'<script src="/static/theme/{THEME}/js/confirm.js"></script>'    
+    html += f'<script src="static/js/confirm.js"></script>'    
     html += '<form id="quizForm" method="post">\n'
     html += '<form method="post">\n'
     
