@@ -6,14 +6,14 @@
 <section id="course-selection">
     <h2>Selecciona un curs per començar l'examen:</h2>
     {% if courses %}
-        <form action="{{ url_for('topic.select_topic') }}" method="post">
+        <form action="{{ url_for('select_exam.select_topic') }}" method="post">
             {% for course in courses %}
                 <div class="course-option">
                     <input type="radio" id="{{ course }}" name="course" value="{{ course }}" required>
                     <label for="{{ course }}">{{ course }}</label>
                 </div>
             {% endfor %}
-            <button type="submit">Començar Examen</button>
+            <button type="submit">Select topic</button>
         </form>
     {% else %}
         <p>No hi ha cursos disponibles en aquest moment. Si us plau, torna-ho a provar més tard.</p>
