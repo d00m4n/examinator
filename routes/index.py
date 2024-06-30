@@ -1,12 +1,10 @@
-from flask import Blueprint, render_template, session
+from flask import Blueprint, render_template, session,g
 from config import EXAMS_FOLDER
 from config import THEME
 from config import APP_NAME
-from config import TITLE
-import os
-from datetime import datetime
+# from config import TITLE
 
-current_year = datetime.now().year
+import os
 index_bp = Blueprint('index', __name__)
 
 @index_bp.route('/')
@@ -18,10 +16,10 @@ def index():
     session.clear()
     options={
         "courses": courses,
-        "year": current_year,
+        # "year": g.YEAR,
         "theme": THEME,
         "app_name": APP_NAME,
-        "title": TITLE        
+        # "title": TITLE        
         }
     return render_template('index.html',**options)
 

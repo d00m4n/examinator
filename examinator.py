@@ -12,7 +12,7 @@ import ast
 
 # external imports
 from flask import Flask, render_template_string, request, session, redirect, url_for,flash
-from flask import send_file,render_template
+from flask import send_file,render_template,g
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -23,19 +23,38 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from cryptography.hazmat.backends import default_backend
 
 # custom imports
-from config import EXAMS_FOLDER
+
 from config import EXAM_QUESTIONS
 from config import QUESTIONS_PER_PAGE
-from config import THEME
-from config import TITLE
+from config import THEME, TITLE, APP_NAME,EXAMS_FOLDER
 from appsecrets import PRIVATE_KEY_PATH
 from appsecrets import PRIVATE_KEY_PASSWORD
 import config
 from routes.index import index_bp
+from routes.topic import topic_bp
 
+
+current_year = datetime.now().year
 
 app = Flask(__name__)
 app.register_blueprint(index_bp)
+app.register_blueprint(topic_bp)
+
+# import config vars to global variables, for templates
+@app.context_processor
+def inject_global_vars():
+    return dict(
+        theme=THEME,
+        TITLE=TITLE,
+        g_name=APP_NAME,
+        g_year=current_year,
+        # Afegeix aquí altres variables globals que necessitis
+    )
+# import config vars to global variables, for the python code.
+@app.before_request
+def before_request():
+    g.EXAMS=EXAMS_FOLDER
+    
 app.secret_key = 'una_clau_secreta_molt_segura'
 QUESTION_STYLE = 'h3'
 
@@ -260,48 +279,48 @@ def remove_duplicates(questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     
     return unique_questions
 
-def generate_topic_selection_html(topics: List[str]) -> str:
-    """
-    Generate HTML for topic selection page.
+# def generate_topic_selection_html(topics: List[str]) -> str:
+#     """
+#     Generate HTML for topic selection page.
 
-    Args:
-    topics -- List of available topics
+#     Args:
+#     topics -- List of available topics
 
-    Returns:
-    HTML string for topic selection page
-    """
-    html = BASE_HTML
-    html += '<h2>Select a course:</h2>\n'
-    html += '<form method="post" action="/select_topic">\n'
-    for course in topics:
-        html += f'<input type="radio" name="course" value="{course}">{course}<br>\n'
-    html += '<br><input type="submit" value="Select course">\n'
-    html += '</form>\n'
-    html += '</body></html>'
-    return html
+#     Returns:
+#     HTML string for topic selection page
+#     """
+#     html = BASE_HTML
+#     html += '<h2>Select a course:</h2>\n'
+#     html += '<form method="post" action="/select_topic">\n'
+#     for course in topics:
+#         html += f'<input type="radio" name="course" value="{course}">{course}<br>\n'
+#     html += '<br><input type="submit" value="Select course">\n'
+#     html += '</form>\n'
+#     html += '</body></html>'
+#     return html
 
-def generate_exam_selection_html(course: str, files: List[str]) -> str:
-    """
-    Generate HTML for exam selection page.
+# def generate_exam_selection_html(course: str, files: List[str]) -> str:
+#     """
+#     Generate HTML for exam selection page.
 
-    Args:
-    course -- Selected course
-    files -- List of available exam files
+#     Args:
+#     course -- Selected course
+#     files -- List of available exam files
 
-    Returns:
-    HTML string for exam selection page
-    """
-    html = BASE_HTML
-    html += f'<h2>Course: {course}</h2>\n'
-    html += '<h3>Select an exam:</h3>\n'
-    html += '<form method="post" action="/select_exam">\n'
-    for file in files:
-        html += f'<input type="checkbox" name="exam" value="{file}">{file}<br>\n'
-    html += f'<input type="hidden" name="course" value="{course}">\n'
-    html += '<br><input type="submit" value="Start Exam">\n'
-    html += '</form>\n'
-    html += '</body></html>'
-    return html
+#     Returns:
+#     HTML string for exam selection page
+#     """
+#     html = BASE_HTML
+#     html += f'<h2>Course: {course}</h2>\n'
+#     html += '<h3>Select an exam:</h3>\n'
+#     html += '<form method="post" action="/select_exam">\n'
+#     for file in files:
+#         html += f'<input type="checkbox" name="exam" value="{file}">{file}<br>\n'
+#     html += f'<input type="hidden" name="course" value="{course}">\n'
+#     html += '<br><input type="submit" value="Start Exam">\n'
+#     html += '</form>\n'
+#     html += '</body></html>'
+#     return html
 
 def generate_results_html(score: int, total_questions: int, detailed_results: List[Dict[str, Any]]) -> str:
     """
@@ -451,16 +470,16 @@ BASE_HTML = f'<html>{HEADER}<body>\n'
 #     topics = get_syllabus(EXAMS_FOLDER)
 #     return render_template_string(generate_topic_selection_html(topics))
 
-@app.route('/select_topic', methods=['POST'])
-def select_topic():
-    """
-    Route for topic selection.
-    """
-    selected_topic = request.form.get('course')
-    if selected_topic:
-        files = get_exam_files(selected_topic)
-        return render_template_string(generate_exam_selection_html(selected_topic, files))
-    return redirect(url_for('index'))
+# @app.route('/select_topic', methods=['POST'])
+# def select_topic():
+#     """
+#     Route for topic selection.
+#     """
+#     selected_topic = request.form.get('course')
+#     if selected_topic:
+#         files = get_exam_files(selected_topic)
+#         return render_template_string(generate_exam_selection_html(selected_topic, files))
+#     return redirect(url_for('index'))
 
 # Modify the select_exam route to use the new process_files function
 @app.route('/select_exam', methods=['POST'])
