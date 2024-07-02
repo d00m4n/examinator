@@ -1,4 +1,8 @@
 /* Estils existents... */
+body {
+    color: #aaa5a5;
+    background-color: #1f1f1f;
+}
 
 .question {
     margin-bottom: 20px;
@@ -38,7 +42,8 @@ button:hover {
 }
 
 .course-option:hover {
-    background-color: #f0f0f0;
+    /* background-color: #f0f0f0; */
+    color: #f0f0f0;
 }
 
 button[type="submit"] {
@@ -53,4 +58,7 @@ button[type="submit"] {
 
 button[type="submit"]:hover {
     background-color: #45a049;
+}
+h2 { 
+    color: #4dc9b0
 }

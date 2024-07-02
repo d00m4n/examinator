@@ -1,22 +1,9 @@
-<!DOCTYPE html>
-<html lang="ca">
-<head>
-    <meta charset="UTF-8">
-    <title>Resultats de l'examen</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/quiz.css') }}">
-</head>
-<body>
-    <h1>Resultats de l'examen</h1>
-    <h2>Puntuació: {{ score }} de {{ total_questions }}</h2>
-    
-    {% for result in detailed_results %}
-        <div class="question {% if result.is_correct %}correct{% else %}incorrect{% endif %}">
-            <h3>{{ loop.index }}. {{ result.question }}</h3>
-            <p>La teva resposta: {{ result.user_answer|join(', ') }}</p>
-            <p>Resposta correcta: {{ result.correct_answers|join(', ') }}</p>
-        </div>
-    {% endfor %}
-    
-    <a href="{{ url_for('index') }}">Tornar a l'inici</a>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Results</h1>
+
+<p>Your score: {{ score }} out of {{ total_questions }}</p>
+
+<a href="{{ url_for('index.index') }}">Back to Home</a>
+{% endblock %}

@@ -32,6 +32,8 @@ from appsecrets import PRIVATE_KEY_PASSWORD
 import config
 from routes.index import index_bp
 from routes.exam import selexam_bp
+from routes.quiz import quiz_bp
+
 
 
 current_year = datetime.now().year
@@ -39,6 +41,7 @@ current_year = datetime.now().year
 app = Flask(__name__)
 app.register_blueprint(index_bp)
 app.register_blueprint(selexam_bp)
+app.register_blueprint(quiz_bp)
 
 # import config vars to global variables, for templates
 @app.context_processor
@@ -187,97 +190,97 @@ def get_exam_files(course: str) -> List[str]:
     syllabus_path = os.path.join(exams_folder, course)
     return [f for f in os.listdir(syllabus_path) if f.endswith('.md')]
 
-def process_files(course: str, file_names: List[str]) -> List[Dict[str, Any]]:
-    """
-    Process multiple exam files and return a list of unique questions and answers.
+# def process_files(course: str, file_names: List[str]) -> List[Dict[str, Any]]:
+#     """
+#     Process multiple exam files and return a list of unique questions and answers.
 
-    Args:
-    course -- The course name
-    file_names -- List of file names to process
+#     Args:
+#     course -- The course name
+#     file_names -- List of file names to process
 
-    Returns:
-    A list of dictionaries containing unique questions, answers, and correct answers
-    """
-    all_questions = []
+#     Returns:
+#     A list of dictionaries containing unique questions, answers, and correct answers
+#     """
+#     all_questions = []
     
-    for file_name in file_names:
-        questions = process_single_file(course, file_name)
-        print(f"Loaded {len(questions)} questions from {file_name}")
-        all_questions.extend(questions)
+#     for file_name in file_names:
+#         questions = process_single_file(course, file_name)
+#         print(f"Loaded {len(questions)} questions from {file_name}")
+#         all_questions.extend(questions)
     
-    # Remove duplicates
-    unique_questions = remove_duplicates(all_questions)
+#     # Remove duplicates
+#     unique_questions = remove_duplicates(all_questions)
     
-    print(f"Total unique questions after removing duplicates: {len(unique_questions)}")
+#     print(f"Total unique questions after removing duplicates: {len(unique_questions)}")
     
-    return unique_questions
+#     return unique_questions
 
-def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
-    full_path = os.path.join(EXAMS_FOLDER, course, file_name)
-    with open(full_path, 'r', encoding='utf-8') as file:
-        lines = file.readlines()
+# def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
+#     full_path = os.path.join(EXAMS_FOLDER, course, file_name)
+#     with open(full_path, 'r', encoding='utf-8') as file:
+#         lines = file.readlines()
 
-    questions_answers = []
-    current_question = {'question': '', 'answers': [], 'correct': []}
-    for line in lines:
-        line = line.strip()
-        line = re.sub(r'\[\[(.*?)\]\]', r'\1', line)
-        line = re.sub(r'`(.*?)`', r'<code>\1</code>', line)
-        if line.startswith('####'):
-            if current_question['question']:
-                # Només barregem i afegim la pregunta si té respostes
-                if current_question['answers']:
-                    answers = current_question['answers']
-                    correct_answers = current_question['correct']
-                    zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
-                    random.shuffle(zipped_answers)
-                    current_question['answers'], is_correct = zip(*zipped_answers)
-                    current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
-                    questions_answers.append(current_question)
-                current_question = {'question': '', 'answers': [], 'correct': []}
-            current_question['question'] += line[4:] + ' '
-        elif line.startswith('+'):
-            answer = line[1:].strip()
-            is_correct = '**' in answer
-            answer = answer.replace('**', '')
-            current_question['answers'].append(answer)
-            if is_correct:
-                current_question['correct'].append(answer)
+#     questions_answers = []
+#     current_question = {'question': '', 'answers': [], 'correct': []}
+#     for line in lines:
+#         line = line.strip()
+#         line = re.sub(r'\[\[(.*?)\]\]', r'\1', line)
+#         line = re.sub(r'`(.*?)`', r'<code>\1</code>', line)
+#         if line.startswith('####'):
+#             if current_question['question']:
+#                 # Només barregem i afegim la pregunta si té respostes
+#                 if current_question['answers']:
+#                     answers = current_question['answers']
+#                     correct_answers = current_question['correct']
+#                     zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
+#                     random.shuffle(zipped_answers)
+#                     current_question['answers'], is_correct = zip(*zipped_answers)
+#                     current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
+#                     questions_answers.append(current_question)
+#                 current_question = {'question': '', 'answers': [], 'correct': []}
+#             current_question['question'] += line[4:] + ' '
+#         elif line.startswith('+'):
+#             answer = line[1:].strip()
+#             is_correct = '**' in answer
+#             answer = answer.replace('**', '')
+#             current_question['answers'].append(answer)
+#             if is_correct:
+#                 current_question['correct'].append(answer)
 
-    # Processar l'última pregunta
-    if current_question['question'] and current_question['answers']:
-        answers = current_question['answers']
-        correct_answers = current_question['correct']
-        zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
-        random.shuffle(zipped_answers)
-        current_question['answers'], is_correct = zip(*zipped_answers)
-        current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
-        questions_answers.append(current_question)
+#     # Processar l'última pregunta
+#     if current_question['question'] and current_question['answers']:
+#         answers = current_question['answers']
+#         correct_answers = current_question['correct']
+#         zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
+#         random.shuffle(zipped_answers)
+#         current_question['answers'], is_correct = zip(*zipped_answers)
+#         current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
+#         questions_answers.append(current_question)
     
-    return questions_answers
+#     return questions_answers
 
-def remove_duplicates(questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Remove duplicate questions from the list.
+# def remove_duplicates(questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+#     """
+#     Remove duplicate questions from the list.
 
-    Args:
-    questions -- List of question dictionaries
+#     Args:
+#     questions -- List of question dictionaries
 
-    Returns:
-    A list of unique question dictionaries
-    """
-    unique_questions = []
-    seen_questions = set()
+#     Returns:
+#     A list of unique question dictionaries
+#     """
+#     unique_questions = []
+#     seen_questions = set()
     
-    for question in questions:
-        # Create a tuple of the question and its answers for comparison
-        question_tuple = (question['question'], tuple(sorted(question['answers'])))
+#     for question in questions:
+#         # Create a tuple of the question and its answers for comparison
+#         question_tuple = (question['question'], tuple(sorted(question['answers'])))
         
-        if question_tuple not in seen_questions:
-            seen_questions.add(question_tuple)
-            unique_questions.append(question)
+#         if question_tuple not in seen_questions:
+#             seen_questions.add(question_tuple)
+#             unique_questions.append(question)
     
-    return unique_questions
+#     return unique_questions
 
 # def generate_topic_selection_html(topics: List[str]) -> str:
 #     """
@@ -482,110 +485,111 @@ BASE_HTML = f'<html>{HEADER}<body>\n'
 #     return redirect(url_for('index'))
 
 # Modify the select_exam route to use the new process_files function
-@app.route('/select_exam', methods=['POST'])
-def select_exam():
-    course = request.form.get('course')
-    selected_exams = request.form.getlist('exam')
-    if course and selected_exams:
-        session['course'] = course
-        session['selected_exams'] = selected_exams
-        questions_answers = process_files(course, selected_exams)
+# @app.route('/select_exam', methods=['POST'])
+# def select_exam():
+#     course = request.form.get('course')
+#     selected_exams = request.form.getlist('exam')
+#     if course and selected_exams:
+#         session['course'] = course
+#         session['selected_exams'] = selected_exams
+#         questions_answers = process_files(course, selected_exams)
         
-        # Comprova si hi ha preguntes vàlides
-        if not questions_answers:
-            flash("No s'han trobat preguntes vàlides en els exàmens seleccionats.", "error")
-            return redirect(url_for('index'))
+#         # Comprova si hi ha preguntes vàlides
+#         if not questions_answers:
+#             flash("No s'han trobat preguntes vàlides en els exàmens seleccionats.", "error")
+#             return redirect(url_for('index'))
         
-        # Barreja les preguntes si és necessari
-        random.shuffle(questions_answers)
+#         # Barreja les preguntes si és necessari
+#         random.shuffle(questions_answers)
         
-        # Limita a EXAM_QUESTIONS si és necessari
-        questions_answers = questions_answers[:EXAM_QUESTIONS]
+#         # Limita a EXAM_QUESTIONS si és necessari
+#         questions_answers = questions_answers[:EXAM_QUESTIONS]
         
-        session['questions_answers'] = questions_answers
-        session['user_answers'] = {f'question{i+1}': [] for i in range(len(questions_answers))}
-        return redirect(url_for('quiz'))
-    return redirect(url_for('index'))
-@app.route('/quiz', methods=['GET', 'POST'])
-def quiz():
-    if 'questions_answers' not in session:
-        return redirect(url_for('index'))
+#         session['questions_answers'] = questions_answers
+#         session['user_answers'] = {f'question{i+1}': [] for i in range(len(questions_answers))}
+#         return redirect(url_for('quiz'))
+#     return redirect(url_for('index'))
+
+# @app.route('/quiz', methods=['GET', 'POST'])
+# def quiz():
+#     if 'questions_answers' not in session:
+#         return redirect(url_for('index'))
     
-    questions_answers = session['questions_answers']
-    total_questions = len(questions_answers)
+#     questions_answers = session['questions_answers']
+#     total_questions = len(questions_answers)
     
-    if 'user_answers' not in session:
-        session['user_answers'] = {}
+#     if 'user_answers' not in session:
+#         session['user_answers'] = {}
     
-    user_answers = session['user_answers']
+#     user_answers = session['user_answers']
     
-    if request.method == 'POST':
-        for key, value in request.form.items():
-            if key.startswith('question'):
-                question_number = int(key[8:])  # Extract the question number from the key
-                if isinstance(value, list):
-                    user_answers[question_number] = value
-                else:
-                    user_answers[question_number] = [value]
+#     if request.method == 'POST':
+#         for key, value in request.form.items():
+#             if key.startswith('question'):
+#                 question_number = int(key[8:])  # Extract the question number from the key
+#                 if isinstance(value, list):
+#                     user_answers[question_number] = value
+#                 else:
+#                     user_answers[question_number] = [value]
         
-        session['user_answers'] = to_string_keys(session['user_answers'])
-        session.modified = True
+#         session['user_answers'] = to_string_keys(session['user_answers'])
+#         session.modified = True
         
-        if request.form.get('action') == 'Finish Exam':
-            return redirect(url_for('review'))
-            # Process all answers
-            score = 0
-            detailed_results = []
+#         if request.form.get('action') == 'Finish Exam':
+#             return redirect(url_for('review'))
+#             # Process all answers
+#             score = 0
+#             detailed_results = []
             
-            for i, question in enumerate(questions_answers, 1):
-                user_answer = user_answers.get(i, [])
-                correct_answers = set(question['correct'])
-                is_correct = False
+#             for i, question in enumerate(questions_answers, 1):
+#                 user_answer = user_answers.get(i, [])
+#                 correct_answers = set(question['correct'])
+#                 is_correct = False
                 
-                if len(question['correct']) == 1 and len(question['answers']) == 1:
-                    user_answer = user_answer[0] if user_answer else ""
-                    is_correct = user_answer.lower() == question['correct'][0].lower()
-                elif len(question['correct']) == 1:
-                    user_answer = user_answer[0] if user_answer else ""
-                    is_correct = user_answer in correct_answers
-                else:
-                    is_correct = set(user_answer) == correct_answers
+#                 if len(question['correct']) == 1 and len(question['answers']) == 1:
+#                     user_answer = user_answer[0] if user_answer else ""
+#                     is_correct = user_answer.lower() == question['correct'][0].lower()
+#                 elif len(question['correct']) == 1:
+#                     user_answer = user_answer[0] if user_answer else ""
+#                     is_correct = user_answer in correct_answers
+#                 else:
+#                     is_correct = set(user_answer) == correct_answers
                 
-                if is_correct:
-                    score += 1
+#                 if is_correct:
+#                     score += 1
                 
-                detailed_results.append({
-                    'question': question['question'],
-                    'user_answer': user_answer,
-                    'correct_answers': question['correct'],
-                    'is_correct': is_correct
-                })
+#                 detailed_results.append({
+#                     'question': question['question'],
+#                     'user_answer': user_answer,
+#                     'correct_answers': question['correct'],
+#                     'is_correct': is_correct
+#                 })
             
-            # Save results to session
-            session['score'] = score
-            session['total_questions'] = total_questions
-            session['detailed_results'] = detailed_results
+#             # Save results to session
+#             session['score'] = score
+#             session['total_questions'] = total_questions
+#             session['detailed_results'] = detailed_results
             
-            # Clear answers from session
-            session.pop('user_answers', None)
-            session.pop('questions_answers', None)
+#             # Clear answers from session
+#             session.pop('user_answers', None)
+#             session.pop('questions_answers', None)
             
-            # Generate and return results
-            return generate_results_html(score, total_questions, detailed_results)
-        else:
-            # Redirect to the next page
-            current_page = int(request.form.get('current_page', 1))
-            return redirect(url_for('quiz', page=current_page+1))
+#             # Generate and return results
+#             return generate_results_html(score, total_questions, detailed_results)
+#         else:
+#             # Redirect to the next page
+#             current_page = int(request.form.get('current_page', 1))
+#             return redirect(url_for('quiz', page=current_page+1))
     
-    current_page = request.args.get('page', 1, type=int)
-    start = (current_page - 1) * QUESTIONS_PER_PAGE
-    end = min(start + QUESTIONS_PER_PAGE, total_questions)
-    page_questions = questions_answers[start:end]
+#     current_page = request.args.get('page', 1, type=int)
+#     start = (current_page - 1) * QUESTIONS_PER_PAGE
+#     end = min(start + QUESTIONS_PER_PAGE, total_questions)
+#     page_questions = questions_answers[start:end]
     
-    saved_answers = {i: user_answers.get(i, []) for i in range(start + 1, end + 1)}
+#     saved_answers = {i: user_answers.get(i, []) for i in range(start + 1, end + 1)}
     
-    html = generate_quiz_html(page_questions, QUESTION_STYLE, current_page, total_questions, saved_answers)
-    return render_template_string(html)
+#     html = generate_quiz_html(page_questions, QUESTION_STYLE, current_page, total_questions, saved_answers)
+#     return render_template_string(html)
 
 @app.route('/certificate_error')
 def certificate_error():
