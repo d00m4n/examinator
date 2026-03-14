@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login d'administrador</title>
+    <link rel="stylesheet" type="text/css" href="/static/styles.css">
+</head>
+<body>
+    <img src="/static/logo.jpg" alt="Logo de l'Ajuntament de Reus">  <!-- Afegeix el logo de l'Ajuntament de Reus fora del formulari -->
+    <form method="POST">
+        <div class="form-group">
+            <label for="user">USUARI:</label>
+            <input type="text" id="user" name="user">
+        </div>
+        <div class="form-group">
+            <label for="password">CONTRASENYA:</label>
+            <input type="password" id="password" name="password">
+        </div>
+        <input type="submit" value="Enviar">
+    </form>
+    {% if error %}
+        <p class="error" id="error">{{ error }}</p>
+        <script>
+            setTimeout(function() {
+                document.getElementById('error').style.display = 'none';
+            }, 5000);
+        </script>
+    {% endif %}
+</body>
+</html>

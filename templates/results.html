@@ -1,9 +1,23 @@
 {% extends "base.html" %}
 
+{% block title %}Resultats de l'examen{% endblock %}
+
 {% block content %}
-<h1>Results</h1>
+<section>
+    <h2>Puntuació: {{ score }} de {{ total_questions }}</h2>
+</section>
 
-<p>Your score: {{ score }} out of {{ total_questions }}</p>
+{% for result in detailed_results %}
+    <div class="question {% if result.is_correct %}correct{% else %}incorrect{% endif %}">
+        <h3>{{ loop.index }}. {{ result.question }}</h3>
+        {% if result.user_answer is string %}
+            <p>La teva resposta: {{ result.user_answer }}</p>
+        {% else %}
+            <p>La teva resposta: {{ result.user_answer|join(', ') }}</p>
+        {% endif %}
+        <p>Resposta correcta: {{ result.correct_answers|join(', ') }}</p>
+    </div>
+{% endfor %}
 
-<a href="{{ url_for('index.index') }}">Back to Home</a>
+<a href="{{ url_for('index') }}">Tornar a l'inici</a>
 {% endblock %}

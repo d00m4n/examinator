@@ -7,20 +7,22 @@ from time import sleep
 from io import BytesIO
 from datetime import datetime
 import io
+
 import importlib
 import ast
 
 # external imports
 from flask import Flask, render_template_string, request, session, redirect, url_for,flash
 from flask import send_file,render_template
+from flask_session import Session
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
-from PyPDF2 import PdfReader, PdfWriter
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from cryptography.hazmat.backends import default_backend
+# from PyPDF2 import PdfReader, PdfWriter
+# from cryptography.hazmat.primitives import hashes
+# from cryptography.hazmat.primitives.asymmetric import padding, rsa
+# from cryptography.hazmat.primitives.serialization import load_pem_private_key
+# from cryptography.hazmat.backends import default_backend
 
 # custom imports
 from config import EXAMS_FOLDER
@@ -28,40 +30,39 @@ from config import EXAM_QUESTIONS
 from config import QUESTIONS_PER_PAGE
 from config import THEME
 from config import TITLE
-from appsecrets import PRIVATE_KEY_PATH
-from appsecrets import PRIVATE_KEY_PASSWORD
+# from appsecrets import PRIVATE_KEY_PATH
+# from appsecrets import PRIVATE_KEY_PASSWORD
 import config
-
 
 app = Flask(__name__)
 app.secret_key = 'una_clau_secreta_molt_segura'
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_FILE_DIR'] = 'flask_session'
+Session(app)
+
 QUESTION_STYLE = 'h3'
 
 def load_private_key():
-    if not os.path.exists(PRIVATE_KEY_PATH):
-        return None
+    # if not os.path.exists(PRIVATE_KEY_PATH):
+    #     raise FileNotFoundError(f"Private key file not found: {PRIVATE_KEY_PATH}")
     try:
         with open(PRIVATE_KEY_PATH, 'rb') as key_file:
-            private_key = load_pem_private_key(
-                key_file.read(),
-                password=PRIVATE_KEY_PASSWORD if PRIVATE_KEY_PASSWORD else None,
-                backend=default_backend()
-            )
-            return private_key
-    except Exception as e:
-        print(f"Error loading private key: {str(e)}")
-        return None
+            try:
+                private_key = load_pem_private_key(
+                    key_file.read(),
+                    password=PRIVATE_KEY_PASSWORD if PRIVATE_KEY_PASSWORD else None,
+                    backend=default_backend()
+                )
+                return private_key
+            except ValueError:
+                raise ValueError("Incorrect password for private key")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid private key or password: {str(e)}")
 
 def sign_pdf(pdf_content):
     private_key = load_private_key()
-    if private_key is None:
-        return pdf_content  # Return unsigned PDF if no valid key is found
-
-    # Assegurem-nos que pdf_content és bytes
-    if isinstance(pdf_content, io.BytesIO):
-        pdf_content = pdf_content.getvalue()
-
-    # Rest of the signing process...
+    
+    # Llegim el PDF
     reader = PdfReader(io.BytesIO(pdf_content))
     writer = PdfWriter()
 
@@ -93,7 +94,7 @@ def sign_pdf(pdf_content):
     output = io.BytesIO()
     writer.write(output)
     output.seek(0)
-    return output.getvalue()  # Return bytes instead of BytesIO
+    return output
 
 def generate_pdf(score: int, total_questions: int, detailed_results: List[Dict[str, Any]]) -> BytesIO:
     buffer = BytesIO()
@@ -185,6 +186,16 @@ def process_files(course: str, file_names: List[str]) -> List[Dict[str, Any]]:
     return unique_questions
 
 def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
+    """
+    Process a single exam file and return a list of questions and answers.
+
+    Args:
+    course -- The course name
+    file_name -- The name of the file to process
+
+    Returns:
+    A list of dictionaries containing questions, answers, and correct answers
+    """
     full_path = os.path.join(EXAMS_FOLDER, course, file_name)
     with open(full_path, 'r', encoding='utf-8') as file:
         lines = file.readlines()
@@ -197,18 +208,18 @@ def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
         line = re.sub(r'`(.*?)`', r'<code>\1</code>', line)
         if line.startswith('####'):
             if current_question['question']:
-                # Només barregem i afegim la pregunta si té respostes
-                if current_question['answers']:
-                    answers = current_question['answers']
-                    correct_answers = current_question['correct']
-                    zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
-                    random.shuffle(zipped_answers)
-                    current_question['answers'], is_correct = zip(*zipped_answers)
-                    current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
-                    questions_answers.append(current_question)
+                # Barreja les respostes aleatòriament
+                answers = current_question['answers']
+                correct_answers = current_question['correct']
+                zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
+                random.shuffle(zipped_answers)
+                current_question['answers'], is_correct = zip(*zipped_answers)
+                current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
+                
+                questions_answers.append(current_question)
                 current_question = {'question': '', 'answers': [], 'correct': []}
             current_question['question'] += line[4:] + ' '
-        elif line.startswith('+'):
+        elif line.startswith('+') or line.startswith('-'):
             answer = line[1:].strip()
             is_correct = '**' in answer
             answer = answer.replace('**', '')
@@ -216,14 +227,15 @@ def process_single_file(course: str, file_name: str) -> List[Dict[str, Any]]:
             if is_correct:
                 current_question['correct'].append(answer)
 
-    # Processar l'última pregunta
-    if current_question['question'] and current_question['answers']:
+    if current_question['question']:
+        # Barreja les respostes aleatòriament per a l'última pregunta
         answers = current_question['answers']
         correct_answers = current_question['correct']
         zipped_answers = list(zip(answers, [answer in correct_answers for answer in answers]))
         random.shuffle(zipped_answers)
         current_question['answers'], is_correct = zip(*zipped_answers)
         current_question['correct'] = [answer for answer, correct in zip(current_question['answers'], is_correct) if correct]
+        
         questions_answers.append(current_question)
     
     return questions_answers
@@ -353,81 +365,47 @@ def add_redirect(BASE_HTML, redirect_url, delay=5):
     # Inserim la metaetiqueta just abans de </head>
     return BASE_HTML[:head_end_index] + redirect_meta + BASE_HTML[head_end_index:]
 
-def generate_quiz_html(questions_answers: List[Dict[str, Any]], question_style: str, 
-                       current_page: int, total_questions: int, saved_answers: Dict[str, List[str]]) -> str:
-    """
-    Generate HTML for the quiz page.
-
-    Args:
-    questions_answers -- List of questions and answers
-    question_style -- HTML style for questions
-    current_page -- Current page number
-    total_questions -- Total number of questions
-    saved_answers -- Dictionary of saved user answers
-
-    Returns:
-    HTML string for the quiz page
-    """
-    html = BASE_HTML
-        # Afegim l'estil CSS per al div flotant
-    # Afegim la referència al fitxer CSS
-    html += f'<link rel="stylesheet" type="text/css" href="/static/theme/{THEME}/css/confirm.css">'
+# def generate_quiz_html(questions_answers, question_style, current_page, total_questions, saved_answers):
+#     html = BASE_HTML
+#     html += '<form method="post">\n'
+    
+#     offset = (current_page - 1) * QUESTIONS_PER_PAGE
+    
+#     for i, question in enumerate(questions_answers, offset + 1):
+#         html += f"<{question_style}>{i}. {question['question']}</{question_style}>\n"
+#         key = f'question{i}'
+#         user_answers = saved_answers.get(str(i), [])  # Utilitzem un string com a clau
         
-    # Afegim el div flotant al HTML
-    html += '''
-    <div id="confirmOverlay">
-        <div id="confirmBox">
-            <p>Estàs segur que vols finalitzar l'examen?</p>
-            <button onclick="submitExam()">Sí</button>
-            <button onclick="hideConfirm()">No</button>
-        </div>
-    </div>
-    '''
+#         if len(question['correct']) == 1 and len(question['answers']) == 1:
+#             value = user_answers[0] if user_answers else ""
+#             html += f'<input type="text" name="{key}" value="{value}" />\n'
+#         elif len(question['correct']) == 1:
+#             for answer in question['answers']:
+#                 checked = 'checked' if answer in user_answers else ''
+#                 html += f'<input type="radio" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
+#         else:
+#             for answer in question['answers']:
+#                 checked = 'checked' if answer in user_answers else ''
+#                 html += f'<input type="checkbox" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
     
-    # Afegim la referència al fitxer JavaScript
-    html += f'<script src="/static/js/confirm.js"></script>'    
-    html += '<form id="quizForm" method="post">\n'
-    html += '<form method="post">\n'
+#     total_pages = (total_questions + QUESTIONS_PER_PAGE - 1) // QUESTIONS_PER_PAGE
+#     html += f'<input type="hidden" name="current_page" value="{current_page}">'
+#     html += f'<p>Page {current_page} of {total_pages}</p>\n'
     
-    offset = (current_page - 1) * QUESTIONS_PER_PAGE
+#     if current_page > 1:
+#         html += f'<a href="{url_for("quiz", page=current_page-1)}">Previous</a> '
     
-    for i, question in enumerate(questions_answers, offset + 1):
-        html += f"<{question_style}>{i}. {question['question']}</{question_style}>\n"
-        key = f'question{i}'
-        user_answers = saved_answers.get(key, [])
-        
-        if len(question['correct']) == 1 and len(question['answers']) == 1:
-            value = user_answers[0] if user_answers else ""
-            html += f'<input type="text" name="{key}" value="{value}" />\n'
-        elif len(question['correct']) == 1:
-            for answer in question['answers']:
-                checked = 'checked' if answer in user_answers else ''
-                html += f'<input type="radio" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
-        else:
-            for answer in question['answers']:
-                checked = 'checked' if answer in user_answers else ''
-                html += f'<input type="checkbox" name="{key}" value="{answer}" {checked}>{answer}<br/>\n'
+#     if current_page < total_pages:
+#         html += f'<a href="{url_for("quiz", page=current_page+1)}">Next</a> '
     
-    # Add pagination controls
-    total_pages = (total_questions + QUESTIONS_PER_PAGE - 1) // QUESTIONS_PER_PAGE
-    html += f'<input type="hidden" name="current_page" value="{current_page}">'
-    html += f'<p>Page {current_page} of {total_pages}</p>\n'
-    
-    if current_page > 1:
-        html += f'<a href="{url_for("quiz", page=current_page-1)}">Previous</a> '
-    
-    if current_page < total_pages:
-        html += f'<a href="{url_for("quiz", page=current_page+1)}">Next</a> '
-    
-    html += '<br><br><input type="button" onclick="showConfirm()" value="Finish Exam" />\n'
-    html += '<input type="hidden" name="action" value="Finish Exam" />\n'
-    html += '</form>\n'
-    html += '</body></html>'
-    return html
+#     html += '<br><br><input type="submit" name="action" value="Finish Exam" />\n'
+#     html += '</form>\n'
+#     html += '</body></html>'
+#     return html
 
 # ---------------------| Variables |------------------
 
-header = load_cfg(f"static/theme/default/header.cfg")
+header = load_cfg(f"static/theme/{THEME}/header.cfg")
 # load theme
 HEADER = f"<head>{header}</head>".replace("@THEME", THEME)
 HEADER = HEADER.replace("@TITLE", TITLE)
@@ -456,107 +434,27 @@ def select_topic():
 # Modify the select_exam route to use the new process_files function
 @app.route('/select_exam', methods=['POST'])
 def select_exam():
+    """
+    Route for exam selection.
+    """
     course = request.form.get('course')
-    selected_exams = request.form.getlist('exam')
+    selected_exams = request.form.getlist('exam')  # This will get multiple selected exams
     if course and selected_exams:
         session['course'] = course
         session['selected_exams'] = selected_exams
         questions_answers = process_files(course, selected_exams)
         
-        # Comprova si hi ha preguntes vàlides
-        if not questions_answers:
-            flash("No s'han trobat preguntes vàlides en els exàmens seleccionats.", "error")
-            return redirect(url_for('index'))
-        
-        # Barreja les preguntes si és necessari
+        # Shuffle the questions if needed
         random.shuffle(questions_answers)
         
-        # Limita a EXAM_QUESTIONS si és necessari
+        # Limit to EXAM_QUESTIONS if needed
         questions_answers = questions_answers[:EXAM_QUESTIONS]
         
         session['questions_answers'] = questions_answers
         session['user_answers'] = {f'question{i+1}': [] for i in range(len(questions_answers))}
         return redirect(url_for('quiz'))
     return redirect(url_for('index'))
-@app.route('/quiz', methods=['GET', 'POST'])
-def quiz():
-    if 'questions_answers' not in session:
-        return redirect(url_for('index'))
-    
-    questions_answers = session['questions_answers']
-    total_questions = len(questions_answers)
-    
-    if 'user_answers' not in session:
-        session['user_answers'] = {}
-    
-    user_answers = session['user_answers']
-    
-    if request.method == 'POST':
-        for key, value in request.form.items():
-            if key.startswith('question'):
-                question_number = int(key[8:])  # Extract the question number from the key
-                if isinstance(value, list):
-                    user_answers[question_number] = value
-                else:
-                    user_answers[question_number] = [value]
-        
-        session['user_answers'] = to_string_keys(session['user_answers'])
-        session.modified = True
-        
-        if request.form.get('action') == 'Finish Exam':
-            # Process all answers
-            score = 0
-            detailed_results = []
-            
-            for i, question in enumerate(questions_answers, 1):
-                user_answer = user_answers.get(i, [])
-                correct_answers = set(question['correct'])
-                is_correct = False
-                
-                if len(question['correct']) == 1 and len(question['answers']) == 1:
-                    user_answer = user_answer[0] if user_answer else ""
-                    is_correct = user_answer.lower() == question['correct'][0].lower()
-                elif len(question['correct']) == 1:
-                    user_answer = user_answer[0] if user_answer else ""
-                    is_correct = user_answer in correct_answers
-                else:
-                    is_correct = set(user_answer) == correct_answers
-                
-                if is_correct:
-                    score += 1
-                
-                detailed_results.append({
-                    'question': question['question'],
-                    'user_answer': user_answer,
-                    'correct_answers': question['correct'],
-                    'is_correct': is_correct
-                })
-            
-            # Save results to session
-            session['score'] = score
-            session['total_questions'] = total_questions
-            session['detailed_results'] = detailed_results
-            
-            # Clear answers from session
-            session.pop('user_answers', None)
-            session.pop('questions_answers', None)
-            
-            # Generate and return results
-            return generate_results_html(score, total_questions, detailed_results)
-        else:
-            # Redirect to the next page
-            current_page = int(request.form.get('current_page', 1))
-            return redirect(url_for('quiz', page=current_page+1))
-    
-    current_page = request.args.get('page', 1, type=int)
-    start = (current_page - 1) * QUESTIONS_PER_PAGE
-    end = min(start + QUESTIONS_PER_PAGE, total_questions)
-    page_questions = questions_answers[start:end]
-    
-    saved_answers = {i: user_answers.get(i, []) for i in range(start + 1, end + 1)}
-    
-    html = generate_quiz_html(page_questions, QUESTION_STYLE, current_page, total_questions, saved_answers)
-    return render_template_string(html)
+
 
 @app.route('/certificate_error')
 def certificate_error():
@@ -570,29 +468,26 @@ def download_results():
     total_questions = session.get('total_questions')
     detailed_results = session.get('detailed_results')
 
+    # if not all([score, total_questions, detailed_results]):
+    #     return "No exam results available", 400
     if not all([score, total_questions, detailed_results]):
-        return redirect(url_for('pdfnotfound'))
-
+        return redirect(url_for('pdfnotfound'))  # Redirigeix a la pàgina que tu vulguis
+    
     try:
         pdf_buffer = generate_pdf(score, total_questions, detailed_results)
-        pdf_content = pdf_buffer.getvalue()
-        
-        # Try to sign, but use unsigned if no valid certificate
-        signed_pdf = sign_pdf(pdf_content)
-        
-        filename = "exam_results_{}.pdf".format(datetime.now().strftime('%Y%m%d_%H%M%S'))
-        if signed_pdf == pdf_content:
-            filename = "unsigned_" + filename
+        signed_pdf = sign_pdf(pdf_buffer.getvalue())
         
         return send_file(
-            io.BytesIO(signed_pdf),
+            signed_pdf,
             as_attachment=True,
-            download_name=filename,
+            download_name=f"signed_exam_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
             mimetype='application/pdf'
         )
-    except Exception as e:
-        print(f"Error generating or signing PDF: {str(e)}")
-        return redirect(url_for('pdfnotfound'))
+    except ValueError as e:
+        if str(e) == "Incorrect password for private key":
+            return redirect(url_for('certificate_error'))
+        else:
+            raise e
         
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -632,7 +527,6 @@ def admin():
     
     return render_template('admin.html', config_vars=config_vars)
 
-
 @app.route('/pdfnotfound')
 def pdfnotfound():
     html=add_redirect(BASE_HTML, '/', 2)
@@ -640,40 +534,153 @@ def pdfnotfound():
       
     return render_template_string(html), 400
 
-@app.route('/review', methods=['GET', 'POST'])
-def review():
+def generate_quiz_html(questions_answers, current_page, total_questions, saved_answers):
+    html = BASE_HTML
+
+    total_pages = (total_questions + QUESTIONS_PER_PAGE - 1) // QUESTIONS_PER_PAGE
+
+    # Modal de confirmació
+    html += """
+    <div id="confirmOverlay">
+        <div id="confirmBox">
+            <p>Estas segur que vols finalitzar l'examen?</p>
+            <button class="btn-confirm-yes" onclick="submitExam()">Si, finalitzar</button>
+            <button class="btn-confirm-no" onclick="hideConfirm()">No, continuar</button>
+        </div>
+    </div>
+    <script src="/static/js/quiz.js"></script>
+    """
+
+    # Barra de progrés
+    progress_pct = int((current_page / total_pages) * 100)
+    html += f'''
+    <div class="quiz-progress-bar-wrap">
+        <div class="quiz-progress-bar-fill" style="width:{progress_pct}%"></div>
+    </div>
+    <p class="quiz-page-label">Pregunta {current_page} de {total_pages}</p>
+    '''
+
+    html += '<form id="quizForm" method="post">\n'
+
+    offset = (current_page - 1) * QUESTIONS_PER_PAGE
+
+    for i, question in enumerate(questions_answers, offset + 1):
+        html += f'<div class="quiz-question">\n'
+        html += f'<p class="question-text"><span class="question-num">{i}.</span> {question["question"]}</p>\n'
+        key = f'question{i}'
+        user_answers = saved_answers.get(str(i), [])
+
+        html += '<div class="answer-list">\n'
+        if len(question['correct']) == 1 and len(question['answers']) == 1:
+            value = user_answers[0] if user_answers else ""
+            html += f'<input type="text" name="{key}" value="{value}" />\n'
+        elif len(question['correct']) == 1:
+            for ans_idx, answer in enumerate(question['answers'], 1):
+                checked = 'checked' if answer in user_answers else ''
+                hint = f'<span class="key-hint">{ans_idx}</span>' if ans_idx <= 9 else ''
+                html += f'<label class="answer-option">{hint}<input type="radio" name="{key}" value="{answer}" {checked}><span>{answer}</span></label>\n'
+        else:
+            for ans_idx, answer in enumerate(question['answers'], 1):
+                checked = 'checked' if answer in user_answers else ''
+                hint = f'<span class="key-hint">{ans_idx}</span>' if ans_idx <= 9 else ''
+                html += f'<label class="answer-option">{hint}<input type="checkbox" name="{key}" value="{answer}" {checked}><span>{answer}</span></label>\n'
+        html += '</div>\n'
+        html += '</div>\n'
+
+    html += f'<input type="hidden" name="current_page" value="{current_page}">\n'
+
+    html += '<div class="quiz-nav">\n'
+    if current_page > 1:
+        html += '<button id="btnPrev" type="submit" name="navigation" value="prev"><span class="nav-key">&#8592;</span> Anterior</button>'
+    else:
+        html += '<span></span>'
+
+    html += '<button type="button" class="btn-finish" onclick="showConfirm()">Finalitzar examen</button>\n'
+
+    if current_page < total_pages:
+        html += '<button id="btnNext" type="submit" name="navigation" value="next">Seguent <span class="nav-key">&#8594;</span></button>'
+    else:
+        html += '<span></span>'
+
+    html += '</div>\n'
+    html += '<input type="hidden" id="finishAction" name="action" value="" />\n'
+    html += '</form>\n'
+    html += '</body></html>'
+    return html
+
+@app.route('/quiz', methods=['GET', 'POST'])
+def quiz():
     if 'questions_answers' not in session:
         return redirect(url_for('index'))
-    
-    if request.method == 'POST':
-        # Actualitzem les respostes si l'usuari les ha modificat
-        for key, value in request.form.items():
-            if key.startswith('question'):
-                session['user_answers'][str(key)] = value if isinstance(value, list) else [value]
-    
-    questions_answers = session['questions_answers']
-    user_answers = {str(k): v for k, v in session.get('user_answers', {}).items()}
-    
-    return render_template('review.html', 
-                           questions=questions_answers, 
-                           user_answers=user_answers)
 
-@app.route('/submit')
-def submit():
-    if 'questions_answers' not in session or 'user_answers' not in session:
-        return redirect(url_for('index'))
+    questions_answers = session['questions_answers']
+    total_questions = len(questions_answers)
+
+    if 'user_answers' not in session:
+        session['user_answers'] = {}
+
+    user_answers = session['user_answers']
+
+    if request.method == 'POST':
+        # Processar totes les claus que comencen amb 'question'
+        processed_questions = set()
+        for key in request.form.keys():
+            if key.startswith('question'):
+                question_number = int(key[8:])
+                if question_number not in processed_questions:
+                    # Utilitzar getlist per obtenir tots els valors seleccionats
+                    values = request.form.getlist(key)
+                    user_answers[str(question_number)] = values
+                    processed_questions.add(question_number)
+
+        session['user_answers'] = user_answers
+        session.modified = True
+
+        # Comprovar si s'ha premut Finish Exam
+        if request.form.get('action') == 'Finish Exam':
+            return redirect(url_for('exam_summary'))
+
+        # Comprovar si s'ha premut Previous o Next
+        navigation = request.form.get('navigation')
+        current_page = int(request.form.get('current_page', 1))
+
+        if navigation in ('Previous', 'prev'):
+            return redirect(url_for('quiz', page=current_page-1))
+        elif navigation in ('Next', 'next'):
+            return redirect(url_for('quiz', page=current_page+1))
+        else:
+            # Si no hi ha cap acció específica, mantenir a la mateixa pàgina
+            return redirect(url_for('quiz', page=current_page))
     
+    current_page = int(request.args.get('page', 1))
+    start = (current_page - 1) * QUESTIONS_PER_PAGE
+    end = min(start + QUESTIONS_PER_PAGE, total_questions)
+    page_questions = questions_answers[start:end]
+    
+    saved_answers = {str(i): user_answers.get(str(i), []) for i in range(start + 1, end + 1)}
+    
+    html = generate_quiz_html(page_questions, current_page, total_questions, saved_answers)
+    return render_template_string(html)
+
+def process_exam_results():
     questions_answers = session['questions_answers']
     user_answers = session['user_answers']
-    
     score = 0
-    total_questions = len(questions_answers)
     detailed_results = []
     
     for i, question in enumerate(questions_answers, 1):
-        user_answer = set(user_answers.get(f'question{i}', []))
+        user_answer = user_answers.get(str(i), [])
         correct_answers = set(question['correct'])
-        is_correct = user_answer == correct_answers
+        is_correct = False
+        
+        if len(question['correct']) == 1 and len(question['answers']) == 1:
+            user_answer = user_answer[0] if user_answer else ""
+            is_correct = user_answer.lower() == question['correct'][0].lower()
+        elif len(question['correct']) == 1:
+            user_answer = user_answer[0] if user_answer else ""
+            is_correct = user_answer in correct_answers
+        else:
+            is_correct = set(user_answer) == correct_answers
         
         if is_correct:
             score += 1
@@ -681,42 +688,55 @@ def submit():
         detailed_results.append({
             'question': question['question'],
             'user_answer': user_answer,
-            'correct_answers': correct_answers,
+            'correct_answers': question['correct'],
             'is_correct': is_correct
         })
     
     session['score'] = score
-    session['total_questions'] = total_questions
+    session['total_questions'] = len(questions_answers)
     session['detailed_results'] = detailed_results
     
-    return redirect(url_for('results'))
+    session.pop('user_answers', None)
+    session.pop('questions_answers', None)
+    return generate_results_html(score, len(questions_answers), detailed_results)
 
-@app.route('/results')
-def results():
-    if 'score' not in session or 'total_questions' not in session or 'detailed_results' not in session:
+@app.route('/exam_summary', methods=['GET', 'POST'])
+def exam_summary():
+    if 'questions_answers' not in session or 'user_answers' not in session:
         return redirect(url_for('index'))
     
-    score = session['score']
-    total_questions = session['total_questions']
-    detailed_results = session['detailed_results']
+    questions_answers = session['questions_answers']
+    user_answers = session['user_answers']
     
-    # Netegem la sessió
-    session.pop('questions_answers', None)
-    session.pop('user_answers', None)
-    session.pop('score', None)
-    session.pop('total_questions', None)
-    session.pop('detailed_results', None)
+    if request.method == 'POST':
+        if request.form.get('action') == 'Submit Exam':
+            return process_exam_results()
+        else:
+            return redirect(url_for('quiz'))
     
-    return render_template('results.html', 
-                           score=score, 
-                           total_questions=total_questions, 
-                           detailed_results=detailed_results)
-def to_string_keys(d):
-    if isinstance(d, dict):
-        return {str(k): to_string_keys(v) for k, v in d.items()}
-    elif isinstance(d, list):
-        return [to_string_keys(v) for v in d]
-    else:
-        return d    
+    html = generate_summary_html(questions_answers, user_answers)
+    return render_template_string(html)
+
+def generate_summary_html(questions_answers, user_answers):
+    html = BASE_HTML
+    html += '<h2>Resum de l\'examen</h2>'
+    html += '<form method="post">'
+    
+    for i, question in enumerate(questions_answers, 1):
+        html += f"<h3>{i}. {question['question']}</h3>"
+        user_answer = user_answers.get(str(i), [])
+        
+        for answer in question['answers']:
+            checked = 'checked' if answer in user_answer else ''
+            html += f'<input type="checkbox" {checked} disabled>{answer}<br>'
+        
+        html += '<br>'
+    
+    html += '<input type="submit" name="action" value="Submit Exam">'
+    html += '<input type="submit" name="action" value="Return to Exam">'
+    html += '</form>'
+    html += '</body></html>'
+    return html
+
 if __name__ == '__main__':
-    app.run(debug=True,port=5005)
+    app.run(debug=True)

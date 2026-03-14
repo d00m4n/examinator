@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Formulari</title>
+</head>
+<body>
+    <form method="POST">
+        <select name="readme">
+            {% for readme in readmes %}
+                <option value="{{ readme }}">{{ readme }}</option>
+            {% endfor %}
+        </select>
+        <input type="submit" value="Enviar">
+    </form>
+</body>
+</html>

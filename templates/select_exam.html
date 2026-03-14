@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section id="course-selection">
+    <h2>Selecciona l'examen:</h2>
+    {% if files %}
+        <form action="{{ url_for('select_exam.process_selected_exams') }}" method="post">
+            {% for file in files %}
+                <div class="course-option">
+                    <input type="checkbox" name="exam" value="{{ file }}">{{ file }}<br>
+                </div>
+            {% endfor %}
+            <button type="submit">Començar Examen</button>            
+        </form>
+        <form action="{{ url_for('index.index') }}" method="get">
+            <button type="submit">Back to topic</button>
+        </form>
+    {% else %}
+        <p>No hi ha cursos disponibles en aquest moment. Si us plau, torna-ho a provar més tard.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

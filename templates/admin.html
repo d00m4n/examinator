@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin</title>
+</head>
+<body>
+    <form method="POST">
+        <h2>DEFAULT</h2>
+        {% for key in config.defaults() %}
+            <div>
+                <label for="DEFAULT_{{ key }}">{{ key }}</label>
+                <input type="text" id="DEFAULT_{{ key }}" name="DEFAULT_{{ key }}" value="{{ config['DEFAULT'][key] }}">
+            </div>
+        {% endfor %}
+        {% for section in config.sections() if section != 'DEFAULT' %}
+            <h2>{{ section }}</h2>
+            {% for key in config[section] if key not in config.defaults() %}
+                <div>
+                    <label for="{{ section }}_{{ key }}">{{ key }}</label>
+                    <input type="text" id="{{ section }}_{{ key }}" name="{{ section }}_{{ key }}" value="{{ config[section][key] }}">
+                </div>
+            {% endfor %}
+        {% endfor %}
+        <input type="submit" value="Guardar">
+        <button type="button" onclick="location.href='/';">Cancel·lar</button>
+    </form>
+</body>
+</html>
