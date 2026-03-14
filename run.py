@@ -32,7 +32,6 @@ from appsecrets import PRIVATE_KEY_PASSWORD
 import config
 from routes.index import index_bp
 from routes.exam import selexam_bp
-from routes.quiz import quiz_bp
 
 
 
@@ -41,7 +40,6 @@ current_year = datetime.now().year
 app = Flask(__name__)
 app.register_blueprint(index_bp)
 app.register_blueprint(selexam_bp)
-app.register_blueprint(quiz_bp)
 
 # import config vars to global variables, for templates
 @app.context_processor
@@ -590,6 +588,86 @@ BASE_HTML = f'<html>{HEADER}<body>\n'
     
 #     html = generate_quiz_html(page_questions, QUESTION_STYLE, current_page, total_questions, saved_answers)
 #     return render_template_string(html)
+@app.route('/quiz', methods=['GET', 'POST'])
+def quiz():
+    if 'questions_answers' not in session:
+        return redirect(url_for('index'))
+    
+    questions_answers = session['questions_answers']
+    total_questions = len(questions_answers)
+    
+    if 'user_answers' not in session:
+        session['user_answers'] = {}
+    
+    user_answers = session['user_answers']
+    
+    if request.method == 'POST':
+        for key, value in request.form.items():
+            if key.startswith('question'):
+                question_number = int(key[8:])  # Extract the question number from the key
+                if isinstance(value, list):
+                    user_answers[question_number] = value
+                else:
+                    user_answers[question_number] = [value]
+        
+        session['user_answers'] = to_string_keys(session['user_answers'])
+        session.modified = True
+        
+        if request.form.get('action') == 'Finish Exam':
+            return redirect(url_for('review'))
+            # Process all answers
+            score = 0
+            detailed_results = []
+            
+            for i, question in enumerate(questions_answers, 1):
+                user_answer = user_answers.get(i, [])
+                correct_answers = set(question['correct'])
+                is_correct = False
+                
+                if len(question['correct']) == 1 and len(question['answers']) == 1:
+                    user_answer = user_answer[0] if user_answer else ""
+                    is_correct = user_answer.lower() == question['correct'][0].lower()
+                elif len(question['correct']) == 1:
+                    user_answer = user_answer[0] if user_answer else ""
+                    is_correct = user_answer in correct_answers
+                else:
+                    is_correct = set(user_answer) == correct_answers
+                
+                if is_correct:
+                    score += 1
+                
+                detailed_results.append({
+                    'question': question['question'],
+                    'user_answer': user_answer,
+                    'correct_answers': question['correct'],
+                    'is_correct': is_correct
+                })
+            
+            # Save results to session
+            session['score'] = score
+            session['total_questions'] = total_questions
+            session['detailed_results'] = detailed_results
+            
+            # Clear answers from session
+            session.pop('user_answers', None)
+            session.pop('questions_answers', None)
+            
+            # Generate and return results
+            return generate_results_html(score, total_questions, detailed_results)
+        else:
+            # Redirect to the next page
+            current_page = int(request.form.get('current_page', 1))
+            return redirect(url_for('quiz', page=current_page+1))
+    
+    current_page = request.args.get('page', 1, type=int)
+    start = (current_page - 1) * QUESTIONS_PER_PAGE
+    end = min(start + QUESTIONS_PER_PAGE, total_questions)
+    page_questions = questions_answers[start:end]
+    
+    saved_answers = {i: user_answers.get(i, []) for i in range(start + 1, end + 1)}
+    
+    html = generate_quiz_html(page_questions, QUESTION_STYLE, current_page, total_questions, saved_answers)
+    return render_template_string(html)
 
 @app.route('/certificate_error')
 def certificate_error():
